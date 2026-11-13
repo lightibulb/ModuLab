@@ -85,14 +85,16 @@ def run_narrowband_sweep(cfg: Config, out_dir: Path):
     fcs = cfg.get("narrowband_sweep", "fc_hz", default=[500, 1000, 2000, 4000])
     ratios = cfg.get("narrowband_sweep", "bw_ratios", default=[0.05, 0.1, 0.2, 0.5, 1.0])
     mod = cfg.get("narrowband_sweep", "modulation", default={})
+    bits = int(cfg.get("narrowband_sweep", "bits", default=12))
 
     sweep = []
-    print(f"  Sweep: {len(fcs)} fc x {len(ratios)} bw ratios")
+    print(f"  Sweep: {len(fcs)} fc x {len(ratios)} bw ratios @ {bits}-bit")
     for fc in fcs:
         for r in ratios:
             x = am_fm_tone(fs, duration, fc=fc, am_freq=r * fc / 4,
                            am_depth=float(mod.get("am_depth", 0.5)),
-                           fm_freq=r * fc / 4, fm_depth=float(mod.get("fm_depth_hz", 20.0)))
+                           fm_freq=r * fc / 4,
+                           fm_depth=float(mod.get("fm_depth_hz", 20.0)))
             nyq = fs / 2.0
             lo = max((fc - r * fc / 2) / nyq, 0.001)
             hi = min((fc + r * fc / 2) / nyq, 0.999)
@@ -103,23 +105,40 @@ def run_narrowband_sweep(cfg: Config, out_dir: Path):
             ph = np.unwrap(np.angle(a))
             car = 2 * np.pi * fc * np.arange(len(x)) / fs
             res = ph - car
-            res -= res[0]
-            fm = np.gradient(res) * fs / (2 * np.pi)
-            am_max = am.max() + 1e-12
-            am_q = np.round(am / am_max * 255) / 255 * am_max
-            fm_max = np.abs(fm).max() + 1e-12
-            fm_q = np.round(fm / fm_max * 127) / 127 * fm_max
+            # CRITICAL: preserve phase0 BEFORE zeroing
+            phase0 = float(res[0])
+            res = res - phase0
+            # First-difference with leading zero: cumsum exactly inverts
+            fm = np.zeros_like(res)
+            fm[1:] = np.diff(res) * fs / (2 * np.pi)
+
+            # Configurable bit-width quantization
+            am_levels = 2 ** bits - 1
+            am_max = float(am.max()) + 1e-12
+            am_q = np.round(am / am_max * am_levels) / am_levels * am_max
+            fm_levels = 2 ** (bits - 1) - 1
+            fm_max = float(np.abs(fm).max()) + 1e-12
+            fm_q = np.round(fm / fm_max * fm_levels) / fm_levels * fm_max
+
+            # Reconstruct with phase0 restored
             t = np.arange(len(x)) / fs
-            rec_ph = 2 * np.pi * fc * t + 2 * np.pi * np.cumsum(fm_q) / fs
-            x_rec = am_q * np.cos(rec_ph)
+            rec_res = 2 * np.pi * np.cumsum(fm_q) / fs
+            rec_phase = phase0 + 2 * np.pi * fc * t + rec_res
+            x_rec = am_q * np.cos(rec_phase)
+
             n = min(len(x), len(x_rec))
             noise = x[:n] - x_rec[:n]
-            snr = 10 * np.log10((np.sum(x[:n] ** 2) + 1e-20) / (np.sum(noise ** 2) + 1e-20))
+            snr = 10 * np.log10((np.sum(x[:n] ** 2) + 1e-20) /
+                                (np.sum(noise ** 2) + 1e-20))
             sweep.append({"fc_hz": float(fc), "bw_ratio": float(r),
-                          "bw_hz": float(r * fc), "snr_db": float(snr)})
+                          "bw_hz": float(r * fc), "snr_db": float(snr),
+                          "bits": bits})
 
     out_dir.mkdir(parents=True, exist_ok=True)
     out_file = out_dir / f"sweep_{int(time.time())}.json"
     out_file.write_text(json.dumps(sweep, indent=2))
     print(f"  Wrote {out_file}")
+    if max(s["snr_db"] for s in sweep) < 0:
+        print(f"  WARNING: max SNR = {max(s['snr_db'] for s in sweep):.1f} dB")
+        print(f"  Expected >10 dB for narrowband cases. Phase may still be broken.")
     return {"sweep": sweep, "out_file": str(out_file)}

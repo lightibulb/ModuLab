@@ -56,7 +56,8 @@ def generate_report(results, sweep, out_dir, config_path):
     L.append("")
 
     if sweep and "sweep" in sweep:
-        L.append("## Table 3 - Narrowband sweep (8-bit, single band)")
+        bits_label = (sweep["sweep"][0].get("bits", 8) if sweep and sweep.get("sweep") else 8)
+        L.append(f"## Table 3 - Narrowband sweep ({bits_label}-bit, single band)")
         L.append("")
         L.append("| fc (Hz) | BW/fc | BW (Hz) | SNR (dB) |")
         L.append("|---|---|---|---|")

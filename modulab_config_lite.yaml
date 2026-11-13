@@ -21,10 +21,11 @@ representations:
     low_from: 0
     high_from: 1
 quantization:
-  bit_widths: [8, 16]
+  bit_widths: [8, 12, 16]
 metrics:
   quality: [snr_db, si_sdr_db, mcd_db]
 narrowband_sweep:
+  bits: 12
   fc_hz: [500, 1000, 2000]
   bw_ratios: [0.1, 0.25, 0.5, 1.0]
   modulation:
