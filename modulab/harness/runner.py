@@ -286,3 +286,164 @@ def run_bedrosian_sweep(cfg: Config, out_dir: Path):
         else:
             print("  ❌ No cliff even in decomposition error")
     return {"bedrosian": rows, "out_file": str(out_file)}
+
+
+def run_bedrosian_2d_sweep(cfg: Config, out_dir: Path):
+    """2D Bedrosian sweep: beta x am_depth. Measures AM and FM decomposition
+    accuracy against ground truth. Expected result: cliff moves to lower beta
+    as am_depth increases (envelope spectrum widens)."""
+    from scipy.signal import hilbert
+
+    fs = cfg.fs
+    duration = cfg.duration_s
+    fc = float(cfg.get("bedrosian_2d", "fc_hz", default=1000.0))
+    fm_freq = float(cfg.get("bedrosian_2d", "fm_freq_hz", default=400.0))
+    am_freq = float(cfg.get("bedrosian_2d", "am_freq_hz", default=400.0))
+    betas = cfg.get("bedrosian_2d", "betas",
+                    default=[0.05, 0.25, 0.50, 0.75, 1.00, 1.50, 2.00, 3.00])
+    am_depths = cfg.get("bedrosian_2d", "am_depths",
+                        default=[0.10, 0.30, 0.50, 0.70, 0.90])
+
+    n = int(fs * duration)
+    t = np.arange(n) / fs
+    car_phase = 2 * np.pi * fc * t
+    edge = int(0.05 * n)
+
+    def _pow_snr(ref, est):
+        ref = ref - np.mean(ref)
+        est = est - np.mean(est)
+        ref_pow = np.sqrt(np.mean(ref ** 2)) + 1e-20
+        err_pow = np.sqrt(np.mean((est - ref) ** 2)) + 1e-20
+        return 20 * np.log10(ref_pow / err_pow)
+
+    print(f"  2D sweep: fc={fc} am_freq={am_freq} fm_freq={fm_freq}")
+    print(f"  Grid: {len(betas)} beta x {len(am_depths)} am_depth = "
+          f"{len(betas) * len(am_depths)} cells")
+
+    rows = []
+    for am_depth in am_depths:
+        for beta in betas:
+            fm_depth = beta * fm_freq
+            env = 1.0 + am_depth * np.cos(2 * np.pi * am_freq * t)
+            inst_phase = car_phase + (fm_depth / fm_freq) * np.sin(2 * np.pi * fm_freq * t)
+            x = (env * np.cos(inst_phase)).astype(np.float32)
+
+            a = hilbert(x)
+            am_est = np.abs(a)
+            ph_est = np.unwrap(np.angle(a))
+            res = ph_est - car_phase
+            res = res - res[0]
+            fm_est = np.zeros(n, dtype=np.float64)
+            fm_est[1:] = np.diff(res) * fs / (2 * np.pi)
+
+            am_true = env
+            fm_true = fm_depth * np.cos(2 * np.pi * fm_freq * t)
+
+            am_snr = _pow_snr(am_true[edge:n - edge], am_est[edge:n - edge])
+            fm_snr = _pow_snr(fm_true[edge:n - edge], fm_est[edge:n - edge])
+
+            env_upper = am_freq * (1 + am_depth)
+            carrier_lower = fc - fm_depth
+            bed_ratio = (env_upper / carrier_lower
+                         if carrier_lower > 0 else float("inf"))
+
+            rows.append({
+                "beta": float(beta),
+                "am_depth": float(am_depth),
+                "am_snr_db": float(am_snr),
+                "fm_snr_db": float(fm_snr),
+                "bedrosian_ratio": float(bed_ratio),
+                "env_upper_hz": float(env_upper),
+                "carrier_lower_hz": float(carrier_lower),
+            })
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_file = out_dir / f"bedrosian_2d_{int(time.time())}.json"
+    out_file.write_text(json.dumps(rows, indent=2))
+    print(f"  Wrote {out_file}")
+
+    # --- ASCII heatmaps ---
+    def _snr_char(v):
+        if v >= 60: return "█"
+        if v >= 40: return "▓"
+        if v >= 20: return "▒"
+        if v >= 0:  return "░"
+        return "·"
+
+    def _print_heatmap(metric_key, title):
+        print()
+        print(f"  {title}")
+        print("         " + "".join(f"{d:>7.2f}" for d in am_depths))
+        for b in betas:
+            cells = [r for r in rows if r["beta"] == b]
+            cells = sorted(cells, key=lambda z: z["am_depth"])
+            line = f"  {b:>6.2f}  "
+            for c in cells:
+                line += f"   {_snr_char(c[metric_key])}   "
+            print(line)
+
+    _print_heatmap("am_snr_db", "AM SNR (rows=beta, cols=am_depth)")
+    _print_heatmap("fm_snr_db", "FM SNR (rows=beta, cols=am_depth)")
+
+    # --- Numeric table (compact) ---
+    print()
+    print(f"  AM SNR table (dB)")
+    print(f"  {'beta':>6}  " + "  ".join(f"{d:>6.2f}" for d in am_depths))
+    print(f"  {'-'*6}  " + "  ".join(f"{'-'*6}" for _ in am_depths))
+    for b in betas:
+        cells = sorted([r for r in rows if r["beta"] == b],
+                       key=lambda z: z["am_depth"])
+        print(f"  {b:>6.2f}  " +
+              "  ".join(f"{c['am_snr_db']:>6.1f}" for c in cells))
+
+    # --- Cliff analysis: where does AM SNR drop below 20 dB? ---
+    print()
+    print("  Cliff boundary (first beta where AM SNR < 20 dB per am_depth):")
+    for d in am_depths:
+        cells = sorted([r for r in rows if r["am_depth"] == d],
+                       key=lambda z: z["beta"])
+        cliff_beta = None
+        for c in cells:
+            if c["am_snr_db"] < 20:
+                cliff_beta = c["beta"]
+                break
+        label = f"beta={cliff_beta:.2f}" if cliff_beta is not None else "no cliff"
+        print(f"    am_depth={d:.2f}: {label}")
+
+    # --- Matplotlib PNG if available ---
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        import numpy as np
+
+        fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+
+        for ax, key, title in [
+            (axes[0], "am_snr_db", "AM decomposition SNR (dB)"),
+            (axes[1], "fm_snr_db", "FM decomposition SNR (dB)"),
+        ]:
+            grid = np.zeros((len(betas), len(am_depths)))
+            for i, b in enumerate(betas):
+                for j, d in enumerate(am_depths):
+                    cell = next(r for r in rows
+                                if r["beta"] == b and r["am_depth"] == d)
+                    grid[i, j] = cell[key]
+            im = ax.imshow(grid, aspect="auto", origin="lower",
+                           cmap="viridis",
+                           extent=[min(am_depths), max(am_depths),
+                                   min(betas), max(betas)])
+            ax.set_xlabel("am_depth")
+            ax.set_ylabel("beta (FM modulation index)")
+            ax.set_title(title)
+            fig.colorbar(im, ax=ax)
+
+        fig.tight_layout()
+        png = out_dir / "bedrosian_2d.png"
+        fig.savefig(png, dpi=120, bbox_inches="tight")
+        plt.close(fig)
+        print(f"\n  Wrote {png}")
+    except Exception as e:
+        print(f"\n  (matplotlib unavailable: {e})")
+
+    return {"bedrosian_2d": rows, "out_file": str(out_file)}
