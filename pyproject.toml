@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "modulab"
+version = "0.2.0"
+description = "AM/FM vs STFT empirical benchmark for speech manipulation"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.11",
+    "matplotlib>=3.7",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.4", "pytest-timeout>=2.1"]
+
+[project.scripts]
+modulab = "modulab.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["modulab*"]
