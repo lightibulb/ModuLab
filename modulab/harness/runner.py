@@ -131,12 +131,25 @@ def run_narrowband_sweep(cfg: Config, out_dir: Path):
             rec_phase = phase0 + 2 * np.pi * fc * t + rec_res
             x_rec = am_q * np.cos(rec_phase)
 
-            n = min(len(x), len(x_rec))
-            noise = x[:n] - x_rec[:n]
-            snr = 10 * np.log10((np.sum(x[:n] ** 2) + 1e-20) /
+            # CRITICAL FIX: compare against FILTERED reference (xk), not original (x).
+            # Reconstruction is of xk, so xk is the right target.
+            # Skip 10% edges to remove sosfiltfilt transient artifacts.
+            n_full = min(len(xk), len(x_rec))
+            edge = int(0.10 * n_full)
+            n = n_full - 2 * edge
+            x_ref = xk[edge:edge + n]
+            x_est = x_rec[edge:edge + n]
+            noise = x_ref - x_est
+            snr = 10 * np.log10((np.sum(x_ref ** 2) + 1e-20) /
                                 (np.sum(noise ** 2) + 1e-20))
+            # Also record full-signal SNR (x vs x_rec) for comparison
+            noise_full = x[:n_full] - x_rec[:n_full]
+            snr_vs_original = 10 * np.log10(
+                (np.sum(x[:n_full] ** 2) + 1e-20) /
+                (np.sum(noise_full ** 2) + 1e-20))
             sweep.append({"fc_hz": float(fc), "bw_ratio": float(r),
                           "bw_hz": float(r * fc), "snr_db": float(snr),
+                          "snr_vs_original_db": float(snr_vs_original),
                           "bits": bits})
 
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -145,5 +158,5 @@ def run_narrowband_sweep(cfg: Config, out_dir: Path):
     print(f"  Wrote {out_file}")
     if max(s["snr_db"] for s in sweep) < 0:
         print(f"  WARNING: max SNR = {max(s['snr_db'] for s in sweep):.1f} dB")
-        print(f"  Expected >10 dB for narrowband cases. Phase may still be broken.")
+        print(f"  Expected >10 dB for narrowband cases. Check phase or filter stability.")
     return {"sweep": sweep, "out_file": str(out_file)}
