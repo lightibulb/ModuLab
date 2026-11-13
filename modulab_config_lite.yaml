@@ -27,9 +27,9 @@ metrics:
 narrowband_sweep:
   bits: 12
   fc_hz: [500, 1000, 2000]
-  bw_ratios: [0.1, 0.25, 0.5, 1.0]
+  bw_ratios: [0.10, 0.25, 0.50, 0.75, 1.00, 1.50, 2.00, 3.00]
   modulation:
     am_freq_hz: 5.0
     am_depth: 0.5
     fm_freq_hz: 10.0
-    fm_depth_hz: 20.0
+    fm_depth_ratio: 0.25

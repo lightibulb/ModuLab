@@ -91,10 +91,15 @@ def run_narrowband_sweep(cfg: Config, out_dir: Path):
     print(f"  Sweep: {len(fcs)} fc x {len(ratios)} bw ratios @ {bits}-bit")
     for fc in fcs:
         for r in ratios:
+            # Scale FM depth with r*fc so signal bandwidth tracks filter BW.
+            # fm_depth_ratio=0.25 means FM deviation is 25% of target bandwidth.
+            fm_depth_ratio = float(mod.get("fm_depth_ratio", 0.25))
+            fm_depth = fm_depth_ratio * fc * r
+            am_depth = float(mod.get("am_depth", 0.5))
             x = am_fm_tone(fs, duration, fc=fc, am_freq=r * fc / 4,
-                           am_depth=float(mod.get("am_depth", 0.5)),
+                           am_depth=am_depth,
                            fm_freq=r * fc / 4,
-                           fm_depth=float(mod.get("fm_depth_hz", 20.0)))
+                           fm_depth=fm_depth)
             nyq = fs / 2.0
             lo = max((fc - r * fc / 2) / nyq, 0.001)
             hi = min((fc + r * fc / 2) / nyq, 0.999)
