@@ -163,92 +163,126 @@ def run_narrowband_sweep(cfg: Config, out_dir: Path):
 
 
 def run_bedrosian_sweep(cfg: Config, out_dir: Path):
-    """Direct Bedrosian test: pure AM/FM of the raw signal, varying modulation
-    index beta. No filter, no reference mismatch. The clean physics curve."""
-    from modulab.data.synth import am_fm_tone
+    """Bedrosian test: compare hilbert-derived AM/FM to theoretical ground truth.
+    Reconstruction SNR is reported but is NOT the metric — it stays flat
+    because hilbert(x) always reconstructs x. The real test is decomposition
+    error vs. theory."""
+    from scipy.signal import hilbert
     fs = cfg.fs
     duration = cfg.duration_s
     fc = float(cfg.get("bedrosian_sweep", "fc_hz", default=1000.0))
-    fm_freq = float(cfg.get("bedrosian_sweep", "fm_freq_hz", default=20.0))
+    fm_freq = float(cfg.get("bedrosian_sweep", "fm_freq_hz", default=400.0))
+    am_freq = float(cfg.get("bedrosian_sweep", "am_freq_hz", default=400.0))
+    am_depth = float(cfg.get("bedrosian_sweep", "am_depth", default=0.5))
     betas = cfg.get("bedrosian_sweep", "betas",
-                    default=[0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0])
-    bits = int(cfg.get("bedrosian_sweep", "bits", default=14))
-    am_depth = float(cfg.get("bedrosian_sweep", "am_depth", default=0.3))
+                    default=[0.05, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0])
+    bits = int(cfg.get("bedrosian_sweep", "bits", default=0))  # 0 => float
 
     rows = []
-    print(f"  Bedrosian sweep: fc={fc} Hz, fm_freq={fm_freq} Hz, "
-          f"{len(betas)} beta values @ {bits}-bit")
     n = int(fs * duration)
     t = np.arange(n) / fs
+    car_phase = 2 * np.pi * fc * t
+    edge = int(0.05 * n)
 
+    print(f"  Bedrosian sweep: fc={fc} am_freq={am_freq} fm_freq={fm_freq} "
+          f"bits={'float' if bits == 0 else bits}")
     for beta in betas:
         fm_depth = beta * fm_freq
-        # Build signal: env * cos(2π fc t + β sin(2π fm_freq t))
-        env = 1.0 + am_depth * np.cos(2 * np.pi * am_depth * fm_freq * t)
-        phase_true = 2 * np.pi * fc * t + (fm_depth / fm_freq) * np.sin(2 * np.pi * fm_freq * t)
-        x = (env * np.cos(phase_true)).astype(np.float32)
+        env = 1.0 + am_depth * np.cos(2 * np.pi * am_freq * t)
+        inst_phase = car_phase + (fm_depth / fm_freq) * np.sin(2 * np.pi * fm_freq * t)
+        x = (env * np.cos(inst_phase)).astype(np.float32)
 
-        # AM/FM extraction from raw signal — no filter
+        # hilbert(x) gives analytic AM and phase
         a = hilbert(x)
-        am = np.abs(a)
-        ph = np.unwrap(np.angle(a))
-        car = 2 * np.pi * fc * t
-        res = ph - car
+        am_est = np.abs(a)
+        ph_est = np.unwrap(np.angle(a))
+        res = ph_est - car_phase
         phase0 = float(res[0])
         res = res - phase0
-        fm = np.zeros(n, dtype=np.float64)
-        fm[1:] = np.diff(res) * fs / (2 * np.pi)
+        fm_est = np.zeros(n, dtype=np.float64)
+        fm_est[1:] = np.diff(res) * fs / (2 * np.pi)
 
-        # Quantize
-        am_lv = 2 ** bits - 1
-        am_max = float(am.max()) + 1e-12
-        am_q = np.round(am / am_max * am_lv) / am_lv * am_max
-        fm_lv = 2 ** (bits - 1) - 1
-        fm_max = float(np.abs(fm).max()) + 1e-12
-        fm_q = np.round(fm / fm_max * fm_lv) / fm_lv * fm_max
+        # Theoretical ground truth
+        am_true = env
+        fm_true = fm_depth * np.cos(2 * np.pi * fm_freq * t)
 
-        # Reconstruct
-        rec_res = 2 * np.pi * np.cumsum(fm_q) / fs
-        rec_phase = phase0 + car + rec_res
+        # Decomposition error (skip edges — hilbert boundary effects)
+        am_true_c = am_true[edge:n-edge]
+        am_est_c = am_est[edge:n-edge]
+        am_ref_pow = np.sqrt(np.mean(am_true_c ** 2))
+        am_err_pow = np.sqrt(np.mean((am_est_c - am_true_c) ** 2)) + 1e-20
+        am_snr_db = 20 * np.log10(am_ref_pow / am_err_pow)
+
+        fm_true_c = fm_true[edge:n-edge]
+        fm_est_c = fm_est[edge:n-edge]
+        fm_ref_pow = np.sqrt(np.mean(fm_true_c ** 2))
+        fm_err_pow = np.sqrt(np.mean((fm_est_c - fm_true_c) ** 2)) + 1e-20
+        fm_snr_db = 20 * np.log10(fm_ref_pow / fm_err_pow)
+
+        # Reconstruction SNR (for reference — will be flat)
+        if bits == 0:
+            am_q, fm_q = am_est, fm_est
+        else:
+            am_lv = 2 ** bits - 1
+            am_max = float(am_est.max()) + 1e-12
+            am_q = np.round(am_est / am_max * am_lv) / am_lv * am_max
+            fm_lv = 2 ** (bits - 1) - 1
+            fm_max = float(np.abs(fm_est).max()) + 1e-12
+            fm_q = np.round(fm_est / fm_max * fm_lv) / fm_lv * fm_max
+
+        rec_phase = phase0 + car_phase + 2 * np.pi * np.cumsum(fm_q) / fs
         x_rec = am_q * np.cos(rec_phase)
-
-        # SNR vs ORIGINAL x (this is the pure test)
         noise = x - x_rec
-        snr = 10 * np.log10((np.sum(x ** 2) + 1e-20) /
-                            (np.sum(noise ** 2) + 1e-20))
-        # Expected Carson bandwidth / fc for reference
-        bw_ratio = (2 * (beta + 1) * fm_freq + 2 * am_depth * fm_freq) / fc
-        rows.append({"beta": float(beta), "snr_db": float(snr),
-                     "bw_over_fc": float(bw_ratio), "bits": bits,
-                     "fc_hz": float(fc)})
+        recon_snr = 10 * np.log10((np.sum(x ** 2) + 1e-20) /
+                                  (np.sum(noise ** 2) + 1e-20))
+
+        # Bedrosian ratio: envelope_upper / carrier_lower
+        env_upper = am_freq * (1 + am_depth)
+        carrier_lower = fc - fm_depth
+        bed_ratio = env_upper / carrier_lower if carrier_lower > 0 else float("inf")
+
+        rows.append({
+            "beta": float(beta),
+            "recon_snr_db": float(recon_snr),
+            "am_snr_db": float(am_snr_db),
+            "fm_snr_db": float(fm_snr_db),
+            "bedrosian_ratio": float(bed_ratio),
+            "bits": bits,
+        })
 
     out_dir.mkdir(parents=True, exist_ok=True)
     out_file = out_dir / f"bedrosian_{int(time.time())}.json"
     out_file.write_text(json.dumps(rows, indent=2))
     print(f"  Wrote {out_file}")
 
-    # Print table
     print()
-    print(f"  {'beta':>6}  {'BW/fc':>7}  {'SNR':>8}")
-    print(f"  {'-'*6}  {'-'*7}  {'-'*8}")
+    print(f"  {'beta':>6}  {'Bed.':>6}  {'AM SNR':>8}  {'FM SNR':>8}  {'Recon':>8}")
+    print(f"  {'-'*6}  {'-'*6}  {'-'*8}  {'-'*8}  {'-'*8}")
     for r in rows:
-        print(f"  {r['beta']:>6.2f}  {r['bw_over_fc']:>7.3f}  "
-              f"{r['snr_db']:>7.2f} dB")
+        bed = r["bedrosian_ratio"]
+        bed_str = f"{bed:>6.2f}" if bed != float("inf") else "   inf"
+        print(f"  {r['beta']:>6.2f}  {bed_str}  {r['am_snr_db']:>7.2f}dB  "
+              f"{r['fm_snr_db']:>7.2f}dB  {r['recon_snr_db']:>7.2f}dB")
 
-    # Check for the cliff
-    snrs = [r["snr_db"] for r in rows]
-    if max(snrs) < 10:
-        print("\n  FAIL: max SNR < 10 dB — extraction is broken")
-        return {"bedrosian": rows, "out_file": str(out_file)}
-    nb = [r["snr_db"] for r in rows if r["beta"] <= 0.5]
-    wb = [r["snr_db"] for r in rows if r["beta"] >= 2.0]
-    if nb and wb:
-        delta = np.mean(nb) - np.mean(wb)
-        print(f"\n  narrowband (β≤0.5) mean: {np.mean(nb):.1f} dB")
-        print(f"  wideband   (β≥2) mean:  {np.mean(wb):.1f} dB")
-        print(f"  delta:                  {delta:+.1f} dB")
-        if delta > 10:
-            print("  ✅ Bedrosian cliff confirmed")
+    # Cliff detection on AM/FM decomposition (not recon!)
+    am_snrs = [r["am_snr_db"] for r in rows]
+    fm_snrs = [r["fm_snr_db"] for r in rows]
+    low = [r for r in rows if r["bedrosian_ratio"] < 0.5]
+    high = [r for r in rows if r["bedrosian_ratio"] > 1.5]
+    print()
+    if low and high:
+        am_drop = (np.mean([r["am_snr_db"] for r in low]) -
+                   np.mean([r["am_snr_db"] for r in high]))
+        fm_drop = (np.mean([r["fm_snr_db"] for r in low]) -
+                   np.mean([r["fm_snr_db"] for r in high]))
+        print(f"  AM SNR drop  (Bed<0.5 -> Bed>1.5): {am_drop:+.1f} dB")
+        print(f"  FM SNR drop  (Bed<0.5 -> Bed>1.5): {fm_drop:+.1f} dB")
+        print(f"  Recon SNR range                   : "
+              f"{max(r['recon_snr_db'] for r in rows) - min(r['recon_snr_db'] for r in rows):.1f} dB")
+        if max(am_drop, fm_drop) > 15:
+            print("  ✅ Bedrosian cliff visible in decomposition error")
+        elif max(am_drop, fm_drop) > 5:
+            print("  ⚠️  Weak cliff — but decomposition error IS the right metric")
         else:
-            print("  ⚠️  Cliff weak — check signal generation or bits")
+            print("  ❌ No cliff even in decomposition error")
     return {"bedrosian": rows, "out_file": str(out_file)}
