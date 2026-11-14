@@ -486,9 +486,8 @@ def _speech_like_signal(fs, duration, am_freq, am_depth, f0, formants, seed=42):
 
 
 def run_speech_like_sweep(cfg: Config, out_dir: Path):
-    """Sweep syllabic envelope rate on a multi-formant speech-like signal.
-    Measures how well the Hilbert envelope recovers (a) theoretical composite
-    envelope, (b) pure syllabic envelope."""
+    """Speech-like AM sweep + STFT envelope comparison.
+    AM_env is now LPF'd on both sides for fair comparison at syllable rates."""
     from scipy.signal import hilbert
 
     fs = cfg.fs
@@ -500,48 +499,56 @@ def run_speech_like_sweep(cfg: Config, out_dir: Path):
     formants = tuple((float(f), float(b)) for f, b in formants)
     am_freqs = cfg.get("speech_like", "am_freq_hz",
                        default=[1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 700])
+    lpf_hz = float(cfg.get("speech_like", "lpf_hz", default=30.0))
+    stft_nfft = int(cfg.get("speech_like", "stft_n_fft", default=512))
+    stft_hop = int(cfg.get("speech_like", "stft_hop", default=128))
 
     n = int(duration * fs)
     edge = int(0.10 * n)
 
-    print(f"  Speech-like: f0={f0} Hz, am_depth={am_depth}, formants={formants}")
-    print(f"  Sweep: {len(am_freqs)} am_freq values")
+    def _pow_snr(ref, est):
+        ref = ref - np.mean(ref)
+        est = est - np.mean(est)
+        r = np.sqrt(np.mean(ref ** 2)) + 1e-20
+        e = np.sqrt(np.mean((est - ref) ** 2)) + 1e-20
+        return 20 * np.log10(r / e)
+
+    print(f"  Speech-like AM sweep: f0={f0} am_depth={am_depth} "
+          f"LPF={lpf_hz} Hz, STFT n_fft={stft_nfft} hop={stft_hop}")
 
     rows = []
     for am_freq in am_freqs:
         x, env_true, carrier_env = _speech_like_signal(
             fs, duration, float(am_freq), am_depth, f0, formants, seed=42
         )
-        am_est = np.abs(hilbert(x))
 
-        # Theoretical composite envelope
-        am_theory = env_true * carrier_env
+        # AM/FM: LPF(|hilbert(x)|)
+        am_hil = np.abs(hilbert(x))
+        am_hil_lp = _lpf(am_hil, fs, lpf_hz)
 
-        # SNR vs theory (isolates Bedrosian failure)
-        ref_c = am_theory[edge:n - edge]
-        est_c = am_est[edge:n - edge]
-        ref_pow = np.sqrt(np.mean(ref_c ** 2)) + 1e-20
-        err_pow = np.sqrt(np.mean((est_c - ref_c) ** 2)) + 1e-20
-        snr_vs_theory = 20 * np.log10(ref_pow / err_pow)
+        # STFT: LPF(frame RMS interp)
+        stft_env = _stft_envelope(x, fs, stft_nfft, stft_hop)
+        stft_env_lp = _lpf(stft_env, fs, lpf_hz)
 
-        # SNR vs pure syllabic envelope (speech-realistic)
-        env_c = env_true[edge:n - edge]
-        env_pow = np.sqrt(np.mean(env_c ** 2)) + 1e-20
-        err_env = np.sqrt(np.mean((est_c - env_c) ** 2)) + 1e-20
-        snr_vs_env = 20 * np.log10(env_pow / err_env)
+        # Theoretical envelope (raw composite)
+        am_theory_raw = env_true * carrier_env
 
-        # Bandwidth overlap
-        env_upper = am_freq * (1 + am_depth)
-        f1_lower = formants[0][0] - formants[0][1] / 2
-        overlap = env_upper / f1_lower
+        # LPF'd true syllabic envelope (fair comparison at speech rates)
+        env_true_lp = _lpf(env_true, fs, lpf_hz)
+
+        # Metrics
+        am_vs_theory = _pow_snr(am_theory_raw[edge:n - edge], am_hil[edge:n - edge])
+        am_env_lp = _pow_snr(env_true_lp[edge:n - edge], am_hil_lp[edge:n - edge])
+        stft_env_lp_snr = _pow_snr(env_true_lp[edge:n - edge], stft_env_lp[edge:n - edge])
+        stft_env_raw = _pow_snr(am_theory_raw[edge:n - edge], stft_env[edge:n - edge])
 
         rows.append({
             "am_freq_hz": float(am_freq),
-            "am_vs_theory_db": float(snr_vs_theory),
-            "am_vs_env_db": float(snr_vs_env),
-            "envelope_upper_hz": float(env_upper),
-            "f1_lower_hz": float(f1_lower),
-            "overlap_ratio": float(overlap),
+            "am_vs_theory_db": float(am_vs_theory),
+            "am_env_lp_db": float(am_env_lp),
+            "stft_env_lp_db": float(stft_env_lp_snr),
+            "stft_vs_theory_db": float(stft_env_raw),
+            "note": "above-LPF" if am_freq > lpf_hz else "",
         })
 
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -549,56 +556,43 @@ def run_speech_like_sweep(cfg: Config, out_dir: Path):
     out_file.write_text(json.dumps(rows, indent=2))
     print(f"  Wrote {out_file}")
 
-    # Table
     print()
-    print(f"  {'am_freq':>8}  {'env_up':>7}  {'F1_low':>7}  {'ratio':>6}  "
-          f"{'AM_thry':>9}  {'AM_env':>8}")
-    print(f"  {'-'*8}  {'-'*7}  {'-'*7}  {'-'*6}  {'-'*9}  {'-'*8}")
+    print(f"  {'am_freq':>8}  {'AM_vsThy':>9}  {'AM_env_lp':>10}  "
+          f"{'STFT_env_lp':>11}  {'STFT_vsThy':>10}")
+    print(f"  {'-'*8}  {'-'*9}  {'-'*10}  {'-'*11}  {'-'*10}")
     for r in rows:
-        print(f"  {r['am_freq_hz']:>8.1f}  {r['envelope_upper_hz']:>7.0f}  "
-              f"{r['f1_lower_hz']:>7.0f}  {r['overlap_ratio']:>6.2f}  "
-              f"{r['am_vs_theory_db']:>8.1f}dB  {r['am_vs_env_db']:>7.1f}dB")
+        print(f"  {r['am_freq_hz']:>8.1f}  {r['am_vs_theory_db']:>8.1f}dB  "
+              f"{r['am_env_lp_db']:>9.1f}dB  {r['stft_env_lp_db']:>10.1f}dB  "
+              f"{r['stft_vs_theory_db']:>9.1f}dB")
 
-    # Cliff analysis
-    low_rate = [r for r in rows if r["am_freq_hz"] <= 8]
-    high_rate = [r for r in rows if r["am_freq_hz"] >= 128]
-    if low_rate and high_rate:
-        drop_theory = (np.mean([r["am_vs_theory_db"] for r in low_rate]) -
-                       np.mean([r["am_vs_theory_db"] for r in high_rate]))
+    # Speech-rate comparison
+    speech = [r for r in rows if r["am_freq_hz"] <= lpf_hz]
+    if speech:
         print()
-        print(f"  Speech-rate (<=8 Hz) AM SNR vs theory: "
-              f"{np.mean([r['am_vs_theory_db'] for r in low_rate]):+.1f} dB")
-        print(f"  Consonant-rate (>=128 Hz) AM SNR vs theory: "
-              f"{np.mean([r['am_vs_theory_db'] for r in high_rate]):+.1f} dB")
-        print(f"  Drop: {drop_theory:+.1f} dB")
-        if drop_theory > 20:
-            print("  ✅ Speech-like Bedrosian cliff confirmed")
-        elif drop_theory > 10:
-            print("  ⚠️  Moderate cliff")
-        else:
-            print("  ⚠️  Weak cliff")
+        print(f"  Speech-rate (am_freq <= {lpf_hz} Hz) mean:")
+        print(f"    AM_env_lp:   {np.mean([r['am_env_lp_db'] for r in speech]):+6.1f} dB")
+        print(f"    STFT_env_lp: {np.mean([r['stft_env_lp_db'] for r in speech]):+6.1f} dB")
 
-    # Plot if matplotlib available
+    # PNG if available
     try:
         import matplotlib
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
-
         fig, ax = plt.subplots(figsize=(9, 5))
         freqs = [r["am_freq_hz"] for r in rows]
         ax.semilogx(freqs, [r["am_vs_theory_db"] for r in rows],
-                    "o-", label="AM SNR vs theory")
-        ax.semilogx(freqs, [r["am_vs_env_db"] for r in rows],
-                    "s-", label="AM SNR vs syllabic env")
-        # Mark F1 lower skirt
-        f1_lower = formants[0][0] - formants[0][1] / 2
-        ax.axvline(f1_lower, color="red", linestyle="--", alpha=0.6,
-                   label=f"F1 lower skirt ({f1_lower:.0f} Hz)")
-        ax.axvspan(2, 8, alpha=0.1, color="green", label="syllable rate")
-        ax.axvspan(50, 200, alpha=0.1, color="orange", label="consonant rate")
-        ax.set_xlabel("Syllabic envelope frequency (Hz, log scale)")
-        ax.set_ylabel("AM estimation SNR (dB)")
-        ax.set_title("Speech-like signal: AM decomposition vs envelope rate")
+                    "o-", label="AM vs theory")
+        ax.semilogx(freqs, [r["am_env_lp_db"] for r in rows],
+                    "s-", label=f"AM vs env (LPF {lpf_hz:.0f} Hz)")
+        ax.semilogx(freqs, [r["stft_env_lp_db"] for r in rows],
+                    "^-", label=f"STFT vs env (LPF {lpf_hz:.0f} Hz)")
+        ax.axvline(f0, color="red", linestyle="--", alpha=0.5,
+                   label=f"f0 ({f0:.0f} Hz)")
+        ax.axvline(lpf_hz, color="gray", linestyle=":", alpha=0.5,
+                   label=f"LPF cutoff ({lpf_hz:.0f} Hz)")
+        ax.set_xlabel("Syllabic envelope frequency (Hz)")
+        ax.set_ylabel("AM SNR (dB)")
+        ax.set_title("Speech-like: AM/FM vs STFT envelope recovery")
         ax.grid(True, alpha=0.3)
         ax.legend()
         png = out_dir / "speech_like_sweep.png"
@@ -609,3 +603,165 @@ def run_speech_like_sweep(cfg: Config, out_dir: Path):
         print(f"\n  (matplotlib unavailable: {e})")
 
     return {"speech_like": rows, "out_file": str(out_file)}
+
+
+
+def _lpf(sig, fs, cutoff_hz=30.0, order=4):
+    """Low-pass filter for envelope follower."""
+    from scipy.signal import butter, sosfiltfilt
+    nyq = fs / 2.0
+    if cutoff_hz >= nyq * 0.95:
+        return sig
+    sos = butter(order, cutoff_hz / nyq, btype="low", output="sos")
+    return sosfiltfilt(sos, sig)
+
+
+def _stft_envelope(x, fs, n_fft=512, hop=128):
+    """STFT frame RMS, interpolated back to audio rate."""
+    from scipy.signal import stft as sp_stft
+    noverlap = n_fft - hop
+    _, _, Z = sp_stft(x, fs=fs, nperseg=n_fft, noverlap=noverlap,
+                      boundary="zeros", padded=True)
+    frame_rms = np.sqrt(np.sum(np.abs(Z) ** 2, axis=0))
+    frame_times = np.arange(len(frame_rms)) * hop / fs
+    audio_times = np.arange(len(x)) / fs
+    env = np.interp(audio_times, frame_times, frame_rms,
+                    left=float(frame_rms[0]), right=float(frame_rms[-1]))
+    return env
+
+
+def _stft_fm(x, fs, carrier_hz, n_fft=512, hop=128):
+    """Extract FM from STFT phase at peak bin near carrier_hz."""
+    from scipy.signal import stft as sp_stft
+    noverlap = n_fft - hop
+    freqs, _, Z = sp_stft(x, fs=fs, nperseg=n_fft, noverlap=noverlap,
+                          boundary="zeros", padded=True)
+    bin_idx = int(np.argmin(np.abs(freqs - carrier_hz)))
+    phase = np.unwrap(np.angle(Z[bin_idx, :]))
+    hop_s = hop / fs
+    fm_frames = np.gradient(phase) / (2 * np.pi * hop_s)
+    frame_times = np.arange(len(fm_frames)) * hop_s
+    audio_times = np.arange(len(x)) / fs
+    fm = np.interp(audio_times, frame_times, fm_frames,
+                   left=float(fm_frames[0]), right=float(fm_frames[-1]))
+    return fm
+
+
+def run_fm_sweep(cfg: Config, out_dir: Path):
+    """FM sweep: sweep pitch vibrato rate, compare AM/FM phase-derivative FM
+    to theoretical FM. Compare to STFT phase-derivative FM."""
+    from scipy.signal import hilbert
+
+    fs = cfg.fs
+    duration = cfg.duration_s
+    f0 = float(cfg.get("fm_sweep", "f0_hz", default=1000.0))
+    fm_depth = float(cfg.get("fm_sweep", "fm_depth_hz", default=50.0))
+    am_freq = float(cfg.get("fm_sweep", "am_freq_hz", default=2.0))
+    am_depth = float(cfg.get("fm_sweep", "am_depth", default=0.2))
+    fm_freqs = cfg.get("fm_sweep", "fm_freq_hz",
+                       default=[0.5, 1, 2, 4, 8, 16, 32, 64, 128, 200])
+    stft_nfft = int(cfg.get("fm_sweep", "stft_n_fft", default=512))
+    stft_hop = int(cfg.get("fm_sweep", "stft_hop", default=128))
+
+    n = int(duration * fs)
+    t = np.arange(n) / fs
+    edge = int(0.10 * n)
+
+    def _pow_snr(ref, est):
+        ref = ref - np.mean(ref)
+        est = est - np.mean(est)
+        r = np.sqrt(np.mean(ref ** 2)) + 1e-20
+        e = np.sqrt(np.mean((est - ref) ** 2)) + 1e-20
+        return 20 * np.log10(r / e)
+
+    print(f"  FM sweep: f0={f0} Hz, fm_depth={fm_depth} Hz, "
+          f"STFT n_fft={stft_nfft} hop={stft_hop}")
+
+    rows = []
+    for fm_freq in fm_freqs:
+        # Signal: env * cos(2π f0 t + (fm_depth/fm_freq) sin(2π fm_freq t))
+        env = 1.0 + am_depth * np.cos(2 * np.pi * am_freq * t)
+        phase = 2 * np.pi * f0 * t + (fm_depth / fm_freq) * np.sin(
+            2 * np.pi * fm_freq * t)
+        x = (env * np.cos(phase)).astype(np.float32)
+
+        # AM/FM extraction
+        a = hilbert(x)
+        ph_hil = np.unwrap(np.angle(a))
+        fm_hil = np.gradient(ph_hil) * fs / (2 * np.pi) - f0
+
+        # STFT extraction
+        fm_stft = _stft_fm(x, fs, f0, stft_nfft, stft_hop) - f0
+
+        # Theoretical FM (deviation from f0)
+        fm_true = fm_depth * np.cos(2 * np.pi * fm_freq * t)
+
+        # Metrics
+        am_fm_snr = _pow_snr(fm_true[edge:n - edge], fm_hil[edge:n - edge])
+        stft_fm_snr = _pow_snr(fm_true[edge:n - edge], fm_stft[edge:n - edge])
+
+        # STFT frame rate limit
+        stft_frame_rate = fs / stft_hop
+        stft_nyq = stft_frame_rate / 2.0
+
+        rows.append({
+            "fm_freq_hz": float(fm_freq),
+            "am_fm_snr_db": float(am_fm_snr),
+            "stft_fm_snr_db": float(stft_fm_snr),
+            "stft_nyq_hz": float(stft_nyq),
+            "above_stft_nyq": bool(fm_freq > stft_nyq),
+        })
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_file = out_dir / f"fm_sweep_{int(time.time())}.json"
+    out_file.write_text(json.dumps(rows, indent=2))
+    print(f"  Wrote {out_file}")
+
+    print()
+    print(f"  {'fm_freq':>8}  {'AM_FM_SNR':>10}  {'STFT_SNR':>10}  {'STFT_nyq':>9}")
+    print(f"  {'-'*8}  {'-'*10}  {'-'*10}  {'-'*9}")
+    for r in rows:
+        note = "  ← >Nyq" if r["above_stft_nyq"] else ""
+        print(f"  {r['fm_freq_hz']:>8.1f}  {r['am_fm_snr_db']:>9.1f}dB  "
+              f"{r['stft_fm_snr_db']:>9.1f}dB  "
+              f"{r['stft_nyq_hz']:>8.1f}Hz{note}")
+
+    # Summary
+    low = [r for r in rows if r["fm_freq_hz"] <= 16]
+    high = [r for r in rows if r["fm_freq_hz"] >= 64]
+    if low and high:
+        print()
+        print(f"  Vibrato-rate (<=16 Hz):")
+        print(f"    AM/FM FM SNR: {np.mean([r['am_fm_snr_db'] for r in low]):+6.1f} dB")
+        print(f"    STFT FM SNR : {np.mean([r['stft_fm_snr_db'] for r in low]):+6.1f} dB")
+        print(f"  Fast-rate (>=64 Hz):")
+        print(f"    AM/FM FM SNR: {np.mean([r['am_fm_snr_db'] for r in high]):+6.1f} dB")
+        print(f"    STFT FM SNR : {np.mean([r['stft_fm_snr_db'] for r in high]):+6.1f} dB")
+
+    # PNG
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        fig, ax = plt.subplots(figsize=(9, 5))
+        freqs = [r["fm_freq_hz"] for r in rows]
+        ax.semilogx(freqs, [r["am_fm_snr_db"] for r in rows],
+                    "o-", label="AM/FM phase derivative")
+        ax.semilogx(freqs, [r["stft_fm_snr_db"] for r in rows],
+                    "s-", label="STFT phase derivative")
+        stft_nyq = rows[0]["stft_nyq_hz"]
+        ax.axvline(stft_nyq, color="red", linestyle="--", alpha=0.5,
+                   label=f"STFT Nyquist ({stft_nyq:.0f} Hz)")
+        ax.set_xlabel("FM rate (Hz)")
+        ax.set_ylabel("FM estimation SNR (dB)")
+        ax.set_title("FM extraction: AM/FM vs STFT")
+        ax.grid(True, alpha=0.3)
+        ax.legend()
+        png = out_dir / "fm_sweep.png"
+        fig.savefig(png, dpi=120, bbox_inches="tight")
+        plt.close(fig)
+        print(f"\n  Wrote {png}")
+    except Exception as e:
+        print(f"\n  (matplotlib unavailable: {e})")
+
+    return {"fm_sweep": rows, "out_file": str(out_file)}

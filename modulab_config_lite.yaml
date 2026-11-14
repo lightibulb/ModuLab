@@ -53,4 +53,16 @@ speech_like:
   f0_hz: 120.0
   am_depth: 0.5
   formants: [[700, 100], [1220, 120], [2600, 150]]
+  lpf_hz: 30.0
+  stft_n_fft: 512
+  stft_hop: 128
   am_freq_hz: [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 700]
+
+fm_sweep:
+  f0_hz: 1000.0
+  fm_depth_hz: 50.0
+  am_freq_hz: 2.0
+  am_depth: 0.2
+  fm_freq_hz: [0.5, 1, 2, 4, 8, 16, 32, 64, 128, 200]
+  stft_n_fft: 512
+  stft_hop: 128

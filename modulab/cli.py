@@ -45,6 +45,11 @@ def cmd_speech_like(args):
     cfg = Config.load(args.config)
     run_speech_like_sweep(cfg, Path("results"))
 
+
+def cmd_fm_sweep(args):
+    cfg = Config.load(args.config)
+    run_fm_sweep(cfg, Path("results"))
+
 def main(argv=None):
     p = argparse.ArgumentParser(prog="modulab", description="AM/FM vs STFT benchmark")
     sub = p.add_subparsers(dest="cmd", required=True)
