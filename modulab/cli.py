@@ -40,6 +40,11 @@ def cmd_bedrosian2d(args):
     cfg = Config.load(args.config)
     run_bedrosian_2d_sweep(cfg, Path("results"))
 
+
+def cmd_speech_like(args):
+    cfg = Config.load(args.config)
+    run_speech_like_sweep(cfg, Path("results"))
+
 def main(argv=None):
     p = argparse.ArgumentParser(prog="modulab", description="AM/FM vs STFT benchmark")
     sub = p.add_subparsers(dest="cmd", required=True)

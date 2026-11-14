@@ -447,3 +447,165 @@ def run_bedrosian_2d_sweep(cfg: Config, out_dir: Path):
         print(f"\n  (matplotlib unavailable: {e})")
 
     return {"bedrosian_2d": rows, "out_file": str(out_file)}
+
+
+def _speech_like_signal(fs, duration, am_freq, am_depth, f0, formants, seed=42):
+    """Synthetic speech-like signal: pitch harmonics shaped by formants,
+    modulated by a syllabic envelope. Returns (x, env_true, carrier_env)."""
+    from scipy.signal import hilbert
+    rng = np.random.default_rng(seed)
+    n = int(duration * fs)
+    t = np.arange(n) / fs
+
+    # Syllabic envelope
+    env = 1.0 + am_depth * np.cos(2 * np.pi * am_freq * t)
+
+    # Slow pitch contour (2% vibrato like natural speech)
+    f0_t = f0 * (1.0 + 0.02 * np.sin(2 * np.pi * 0.5 * t))
+    phase_fund = 2 * np.pi * np.cumsum(f0_t) / fs
+
+    # Harmonic carrier with formant-shaped amplitude
+    carrier = np.zeros(n, dtype=np.float64)
+    for h in range(1, 60):
+        fh = h * f0
+        if fh > fs / 2 - 500:
+            break
+        # Lorentzian sum over formants
+        amp = 0.0
+        for fc, bw in formants:
+            amp += (bw ** 2) / (bw ** 2 + (fh - fc) ** 2)
+        carrier += amp * np.cos(h * phase_fund + rng.uniform(0, 2 * np.pi))
+
+    carrier /= (np.abs(carrier).max() + 1e-12)
+
+    # Theoretical composite envelope: |hilbert(carrier)| (Bedrosian element-wise)
+    carrier_env = np.abs(hilbert(carrier))
+
+    x = env * carrier
+    return x.astype(np.float32), env, carrier_env
+
+
+def run_speech_like_sweep(cfg: Config, out_dir: Path):
+    """Sweep syllabic envelope rate on a multi-formant speech-like signal.
+    Measures how well the Hilbert envelope recovers (a) theoretical composite
+    envelope, (b) pure syllabic envelope."""
+    from scipy.signal import hilbert
+
+    fs = cfg.fs
+    duration = cfg.duration_s
+    f0 = float(cfg.get("speech_like", "f0_hz", default=120.0))
+    am_depth = float(cfg.get("speech_like", "am_depth", default=0.5))
+    formants = cfg.get("speech_like", "formants",
+                       default=[[700, 100], [1220, 120], [2600, 150]])
+    formants = tuple((float(f), float(b)) for f, b in formants)
+    am_freqs = cfg.get("speech_like", "am_freq_hz",
+                       default=[1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 700])
+
+    n = int(duration * fs)
+    edge = int(0.10 * n)
+
+    print(f"  Speech-like: f0={f0} Hz, am_depth={am_depth}, formants={formants}")
+    print(f"  Sweep: {len(am_freqs)} am_freq values")
+
+    rows = []
+    for am_freq in am_freqs:
+        x, env_true, carrier_env = _speech_like_signal(
+            fs, duration, float(am_freq), am_depth, f0, formants, seed=42
+        )
+        am_est = np.abs(hilbert(x))
+
+        # Theoretical composite envelope
+        am_theory = env_true * carrier_env
+
+        # SNR vs theory (isolates Bedrosian failure)
+        ref_c = am_theory[edge:n - edge]
+        est_c = am_est[edge:n - edge]
+        ref_pow = np.sqrt(np.mean(ref_c ** 2)) + 1e-20
+        err_pow = np.sqrt(np.mean((est_c - ref_c) ** 2)) + 1e-20
+        snr_vs_theory = 20 * np.log10(ref_pow / err_pow)
+
+        # SNR vs pure syllabic envelope (speech-realistic)
+        env_c = env_true[edge:n - edge]
+        env_pow = np.sqrt(np.mean(env_c ** 2)) + 1e-20
+        err_env = np.sqrt(np.mean((est_c - env_c) ** 2)) + 1e-20
+        snr_vs_env = 20 * np.log10(env_pow / err_env)
+
+        # Bandwidth overlap
+        env_upper = am_freq * (1 + am_depth)
+        f1_lower = formants[0][0] - formants[0][1] / 2
+        overlap = env_upper / f1_lower
+
+        rows.append({
+            "am_freq_hz": float(am_freq),
+            "am_vs_theory_db": float(snr_vs_theory),
+            "am_vs_env_db": float(snr_vs_env),
+            "envelope_upper_hz": float(env_upper),
+            "f1_lower_hz": float(f1_lower),
+            "overlap_ratio": float(overlap),
+        })
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_file = out_dir / f"speech_like_{int(time.time())}.json"
+    out_file.write_text(json.dumps(rows, indent=2))
+    print(f"  Wrote {out_file}")
+
+    # Table
+    print()
+    print(f"  {'am_freq':>8}  {'env_up':>7}  {'F1_low':>7}  {'ratio':>6}  "
+          f"{'AM_thry':>9}  {'AM_env':>8}")
+    print(f"  {'-'*8}  {'-'*7}  {'-'*7}  {'-'*6}  {'-'*9}  {'-'*8}")
+    for r in rows:
+        print(f"  {r['am_freq_hz']:>8.1f}  {r['envelope_upper_hz']:>7.0f}  "
+              f"{r['f1_lower_hz']:>7.0f}  {r['overlap_ratio']:>6.2f}  "
+              f"{r['am_vs_theory_db']:>8.1f}dB  {r['am_vs_env_db']:>7.1f}dB")
+
+    # Cliff analysis
+    low_rate = [r for r in rows if r["am_freq_hz"] <= 8]
+    high_rate = [r for r in rows if r["am_freq_hz"] >= 128]
+    if low_rate and high_rate:
+        drop_theory = (np.mean([r["am_vs_theory_db"] for r in low_rate]) -
+                       np.mean([r["am_vs_theory_db"] for r in high_rate]))
+        print()
+        print(f"  Speech-rate (<=8 Hz) AM SNR vs theory: "
+              f"{np.mean([r['am_vs_theory_db'] for r in low_rate]):+.1f} dB")
+        print(f"  Consonant-rate (>=128 Hz) AM SNR vs theory: "
+              f"{np.mean([r['am_vs_theory_db'] for r in high_rate]):+.1f} dB")
+        print(f"  Drop: {drop_theory:+.1f} dB")
+        if drop_theory > 20:
+            print("  ✅ Speech-like Bedrosian cliff confirmed")
+        elif drop_theory > 10:
+            print("  ⚠️  Moderate cliff")
+        else:
+            print("  ⚠️  Weak cliff")
+
+    # Plot if matplotlib available
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+
+        fig, ax = plt.subplots(figsize=(9, 5))
+        freqs = [r["am_freq_hz"] for r in rows]
+        ax.semilogx(freqs, [r["am_vs_theory_db"] for r in rows],
+                    "o-", label="AM SNR vs theory")
+        ax.semilogx(freqs, [r["am_vs_env_db"] for r in rows],
+                    "s-", label="AM SNR vs syllabic env")
+        # Mark F1 lower skirt
+        f1_lower = formants[0][0] - formants[0][1] / 2
+        ax.axvline(f1_lower, color="red", linestyle="--", alpha=0.6,
+                   label=f"F1 lower skirt ({f1_lower:.0f} Hz)")
+        ax.axvspan(2, 8, alpha=0.1, color="green", label="syllable rate")
+        ax.axvspan(50, 200, alpha=0.1, color="orange", label="consonant rate")
+        ax.set_xlabel("Syllabic envelope frequency (Hz, log scale)")
+        ax.set_ylabel("AM estimation SNR (dB)")
+        ax.set_title("Speech-like signal: AM decomposition vs envelope rate")
+        ax.grid(True, alpha=0.3)
+        ax.legend()
+        png = out_dir / "speech_like_sweep.png"
+        fig.savefig(png, dpi=120, bbox_inches="tight")
+        plt.close(fig)
+        print(f"\n  Wrote {png}")
+    except Exception as e:
+        print(f"\n  (matplotlib unavailable: {e})")
+
+    return {"speech_like": rows, "out_file": str(out_file)}
