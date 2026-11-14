@@ -1,0 +1,112 @@
+[
+  {
+    "beta": 0.05,
+    "snr_db": 37.00603333011617,
+    "bw_over_fc": 1.24,
+    "bits": 14,
+    "fc_hz": 1000.0,
+    "am_freq_hz": 400.0,
+    "fm_freq_hz": 400.0,
+    "bedrosian_ratio": 0.40816326530612246
+  },
+  {
+    "beta": 0.1,
+    "snr_db": 37.758885610340805,
+    "bw_over_fc": 1.28,
+    "bits": 14,
+    "fc_hz": 1000.0,
+    "am_freq_hz": 400.0,
+    "fm_freq_hz": 400.0,
+    "bedrosian_ratio": 0.4166666666666667
+  },
+  {
+    "beta": 0.25,
+    "snr_db": 37.353895044317376,
+    "bw_over_fc": 1.4,
+    "bits": 14,
+    "fc_hz": 1000.0,
+    "am_freq_hz": 400.0,
+    "fm_freq_hz": 400.0,
+    "bedrosian_ratio": 0.4444444444444444
+  },
+  {
+    "beta": 0.5,
+    "snr_db": 34.48542982793227,
+    "bw_over_fc": 1.6,
+    "bits": 14,
+    "fc_hz": 1000.0,
+    "am_freq_hz": 400.0,
+    "fm_freq_hz": 400.0,
+    "bedrosian_ratio": 0.5
+  },
+  {
+    "beta": 0.75,
+    "snr_db": 45.868857428999085,
+    "bw_over_fc": 1.8,
+    "bits": 14,
+    "fc_hz": 1000.0,
+    "am_freq_hz": 400.0,
+    "fm_freq_hz": 400.0,
+    "bedrosian_ratio": 0.5714285714285714
+  },
+  {
+    "beta": 1.0,
+    "snr_db": 31.480234173963186,
+    "bw_over_fc": 2.0,
+    "bits": 14,
+    "fc_hz": 1000.0,
+    "am_freq_hz": 400.0,
+    "fm_freq_hz": 400.0,
+    "bedrosian_ratio": 0.6666666666666666
+  },
+  {
+    "beta": 1.5,
+    "snr_db": 30.287605034482983,
+    "bw_over_fc": 2.4,
+    "bits": 14,
+    "fc_hz": 1000.0,
+    "am_freq_hz": 400.0,
+    "fm_freq_hz": 400.0,
+    "bedrosian_ratio": 1.0
+  },
+  {
+    "beta": 2.0,
+    "snr_db": 38.708917272034995,
+    "bw_over_fc": 2.8,
+    "bits": 14,
+    "fc_hz": 1000.0,
+    "am_freq_hz": 400.0,
+    "fm_freq_hz": 400.0,
+    "bedrosian_ratio": 2.0
+  },
+  {
+    "beta": 2.5,
+    "snr_db": 25.16954098640089,
+    "bw_over_fc": 3.2,
+    "bits": 14,
+    "fc_hz": 1000.0,
+    "am_freq_hz": 400.0,
+    "fm_freq_hz": 400.0,
+    "bedrosian_ratio": Infinity
+  },
+  {
+    "beta": 3.0,
+    "snr_db": 32.85464810521345,
+    "bw_over_fc": 3.6,
+    "bits": 14,
+    "fc_hz": 1000.0,
+    "am_freq_hz": 400.0,
+    "fm_freq_hz": 400.0,
+    "bedrosian_ratio": Infinity
+  },
+  {
+    "beta": 4.0,
+    "snr_db": 27.76139270352097,
+    "bw_over_fc": 4.4,
+    "bits": 14,
+    "fc_hz": 1000.0,
+    "am_freq_hz": 400.0,
+    "fm_freq_hz": 400.0,
+    "bedrosian_ratio": Infinity
+  }
+]

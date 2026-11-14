@@ -1,0 +1,90 @@
+[
+  {
+    "am_freq_hz": 1.0,
+    "am_vs_theory_db": 84.21618568261543,
+    "am_env_lp_db": 67.89626821292472,
+    "stft_env_lp_db": 65.2307958073958,
+    "stft_vs_theory_db": -3.2388813847006914,
+    "note": "in-band"
+  },
+  {
+    "am_freq_hz": 2.0,
+    "am_vs_theory_db": 95.72528876825018,
+    "am_env_lp_db": 69.65999627037733,
+    "stft_env_lp_db": 63.75292747612573,
+    "stft_vs_theory_db": -2.2006327692917713,
+    "note": "in-band"
+  },
+  {
+    "am_freq_hz": 4.0,
+    "am_vs_theory_db": 99.20110032729599,
+    "am_env_lp_db": 70.53014933260638,
+    "stft_env_lp_db": 55.2318864027821,
+    "stft_vs_theory_db": -3.0149962724780606,
+    "note": "in-band"
+  },
+  {
+    "am_freq_hz": 8.0,
+    "am_vs_theory_db": 97.5611514378383,
+    "am_env_lp_db": 70.49530141856624,
+    "stft_env_lp_db": 44.31091590311698,
+    "stft_vs_theory_db": -2.6529464153262583,
+    "note": "in-band"
+  },
+  {
+    "am_freq_hz": 16.0,
+    "am_vs_theory_db": 97.96744851344435,
+    "am_env_lp_db": 69.17984364853818,
+    "stft_env_lp_db": 43.27110473135286,
+    "stft_vs_theory_db": -2.671371938295413,
+    "note": "in-band"
+  },
+  {
+    "am_freq_hz": 32.0,
+    "am_vs_theory_db": 98.68687654497302,
+    "am_env_lp_db": 60.50233996186243,
+    "stft_env_lp_db": 37.39998262495578,
+    "stft_vs_theory_db": -2.860254857474467,
+    "note": "lpf-limited"
+  },
+  {
+    "am_freq_hz": 64.0,
+    "am_vs_theory_db": 97.86190499206296,
+    "am_env_lp_db": 9.979202597910932,
+    "stft_env_lp_db": -45.77887752126044,
+    "stft_vs_theory_db": -8.00741030942693,
+    "note": "lpf-limited"
+  },
+  {
+    "am_freq_hz": 128.0,
+    "am_vs_theory_db": 41.175877922798485,
+    "am_env_lp_db": -49.90295311621266,
+    "stft_env_lp_db": -51.134944176210496,
+    "stft_vs_theory_db": -24.52733562903738,
+    "note": "lpf-limited"
+  },
+  {
+    "am_freq_hz": 256.0,
+    "am_vs_theory_db": 36.04365767297465,
+    "am_env_lp_db": -23.799023213399874,
+    "stft_env_lp_db": -27.553618354760395,
+    "stft_vs_theory_db": -29.782597110474555,
+    "note": "lpf-limited"
+  },
+  {
+    "am_freq_hz": 512.0,
+    "am_vs_theory_db": 26.471946243696646,
+    "am_env_lp_db": -21.191720828073063,
+    "stft_env_lp_db": -21.944459953726465,
+    "stft_vs_theory_db": -24.671711967329873,
+    "note": "lpf-limited"
+  },
+  {
+    "am_freq_hz": 700.0,
+    "am_vs_theory_db": 18.653191154999156,
+    "am_env_lp_db": -19.371806925821467,
+    "stft_env_lp_db": -20.43572723665589,
+    "stft_vs_theory_db": -52.59800615877186,
+    "note": "lpf-limited"
+  }
+]

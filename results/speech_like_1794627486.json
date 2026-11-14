@@ -1,0 +1,90 @@
+[
+  {
+    "am_freq_hz": 1.0,
+    "am_vs_theory_db": 84.21617175119282,
+    "am_env_lp_db": 4.778283585466074,
+    "stft_env_lp_db": 2.9091048254220313,
+    "stft_vs_theory_db": 1.4691267019240153,
+    "note": ""
+  },
+  {
+    "am_freq_hz": 2.0,
+    "am_vs_theory_db": 95.72528360215969,
+    "am_env_lp_db": 4.778342334606903,
+    "stft_env_lp_db": 2.9024838413706906,
+    "stft_vs_theory_db": 1.7741026396589579,
+    "note": ""
+  },
+  {
+    "am_freq_hz": 4.0,
+    "am_vs_theory_db": 99.20109538467854,
+    "am_env_lp_db": 4.777822983521687,
+    "stft_env_lp_db": 2.875423061488591,
+    "stft_vs_theory_db": 1.5241177006693296,
+    "note": ""
+  },
+  {
+    "am_freq_hz": 8.0,
+    "am_vs_theory_db": 97.5611508177382,
+    "am_env_lp_db": 4.778004847586718,
+    "stft_env_lp_db": 2.7731335098671,
+    "stft_vs_theory_db": 1.597571278186349,
+    "note": ""
+  },
+  {
+    "am_freq_hz": 16.0,
+    "am_vs_theory_db": 97.96744720019291,
+    "am_env_lp_db": 4.77800915688834,
+    "stft_env_lp_db": 2.3980787143040514,
+    "stft_vs_theory_db": 1.4650920190374634,
+    "note": ""
+  },
+  {
+    "am_freq_hz": 32.0,
+    "am_vs_theory_db": 98.68686955086302,
+    "am_env_lp_db": 4.777902482406763,
+    "stft_env_lp_db": 1.3615720252262131,
+    "stft_vs_theory_db": 0.950023632975242,
+    "note": "above-LPF"
+  },
+  {
+    "am_freq_hz": 64.0,
+    "am_vs_theory_db": 97.86189625712748,
+    "am_env_lp_db": 4.517119493497718,
+    "stft_env_lp_db": -9.752591850481828,
+    "stft_vs_theory_db": 0.11005543430828992,
+    "note": "above-LPF"
+  },
+  {
+    "am_freq_hz": 128.0,
+    "am_vs_theory_db": 41.17612541679633,
+    "am_env_lp_db": -73.66741587255862,
+    "stft_env_lp_db": -76.00643443642214,
+    "stft_vs_theory_db": 0.01332205887801469,
+    "note": "above-LPF"
+  },
+  {
+    "am_freq_hz": 256.0,
+    "am_vs_theory_db": 36.044730879435726,
+    "am_env_lp_db": -92.4478416345274,
+    "stft_env_lp_db": -93.80935205813692,
+    "stft_vs_theory_db": 0.00434915149555665,
+    "note": "above-LPF"
+  },
+  {
+    "am_freq_hz": 512.0,
+    "am_vs_theory_db": 26.48117116540234,
+    "am_env_lp_db": -90.22411897878266,
+    "stft_env_lp_db": -88.664871209621,
+    "stft_vs_theory_db": 0.013870830309534087,
+    "note": "above-LPF"
+  },
+  {
+    "am_freq_hz": 700.0,
+    "am_vs_theory_db": 18.70774105981219,
+    "am_env_lp_db": -76.65433264174975,
+    "stft_env_lp_db": -83.14071686586594,
+    "stft_vs_theory_db": -0.0018774435050122338,
+    "note": "above-LPF"
+  }
+]
