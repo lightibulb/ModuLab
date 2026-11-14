@@ -415,7 +415,6 @@ def run_bedrosian_2d_sweep(cfg: Config, out_dir: Path):
         import matplotlib
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
-        import numpy as np
 
         fig, axes = plt.subplots(1, 2, figsize=(12, 5))
 

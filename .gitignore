@@ -17,3 +17,6 @@ data/synthetic/*.wav
 !data/synthetic/.gitkeep
 !data/speech/.gitkeep
 .env
+
+*.bak
+*.bak[0-9]*
