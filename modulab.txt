@@ -1,0 +1,4325 @@
+# EcoFac — Whole Project Repository Snapshot
+# Generated : 2026-11-14T04:39:13Z
+# Root      : /storage/emulated/0/projects/modulab
+# Files     : 63
+
+## File Index
+
+  .github/workflows/benchmark.yml
+  .gitignore
+  HYPOTHESIS.md
+  README.md
+  RESULTS.md
+  benchmarks/reproduce.sh
+  data/.gitkeep
+  data/speech/.gitkeep
+  data/synthetic/.gitkeep
+  docs/adr/ADR-001-stft-baseline.md
+  docs/adr/ADR-002-heterodyne.md
+  docs/adr/ADR-003-metric-set.md
+  docs/adr/ADR-004-parallel-hypothesis.md
+  docs/theory/narrowband_condition.md
+  fs.md
+  modulab/__init__.py
+  modulab/__main__.py
+  modulab/cli.py
+  modulab/config.py
+  modulab/data/__init__.py
+  modulab/data/synth.py
+  modulab/harness/__init__.py
+  modulab/harness/report.py
+  modulab/harness/runner.py
+  modulab/metrics/__init__.py
+  modulab/metrics/cost.py
+  modulab/metrics/quality.py
+  modulab/operators/__init__.py
+  modulab/operators/base.py
+  modulab/operators/noise_gate.py
+  modulab/operators/passthrough.py
+  modulab/representations/__init__.py
+  modulab/representations/base.py
+  modulab/representations/filterbank_amfm.py
+  modulab/representations/parallel.py
+  modulab/representations/stft.py
+  modulab_config.yaml
+  modulab_config_lite.yaml
+  pyproject.toml
+  results/.gitkeep
+  results/bedrosian_1794605320.json
+  results/bedrosian_1794605585.json
+  results/bedrosian_1794605708.json
+  results/bedrosian_1794629688.json
+  results/bedrosian_1794629812.json
+  results/bedrosian_2d_1794629813.json
+  results/figures/.gitkeep
+  results/fm_sweep_1794627487.json
+  results/fm_sweep_1794627663.json
+  results/fm_sweep_1794627943.json
+  results/fm_sweep_1794629817.json
+  results/runs/.gitkeep
+  results/speech_like_1794627039.json
+  results/speech_like_1794627486.json
+  results/speech_like_1794627662.json
+  results/speech_like_1794627942.json
+  results/speech_like_1794629816.json
+  scripts/gen_synthetic.py
+  setup.log
+  tests/test_metrics.py
+  tests/test_operators.py
+  tests/test_parallel.py
+  tests/test_representations.py
+
+=======================================================================
+FILE: .github/workflows/benchmark.yml
+=======================================================================
+name: ModuLab Benchmark
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pytest pytest-timeout
+
+      - name: Sanity — imports and CLI
+        run: |
+          python -c "import numpy, scipy, matplotlib, yaml; print('imports ok')"
+          python -m modulab.cli representations
+          python -m modulab.cli operators
+
+      - name: Unit tests
+        run: pytest -q tests/ --timeout=300
+
+      - name: Generate synthetic audio
+        run: python scripts/gen_synthetic.py
+
+      - name: Narrowband sweep
+        run: python -m modulab.cli sweep --config modulab_config_lite.yaml
+
+      - name: Full lite benchmark
+        run: python -m modulab.cli bench --config modulab_config_lite.yaml
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: modulab-results
+          path: |
+            RESULTS.md
+            results/
+            data/synthetic/
+          retention-days: 30
+          if-no-files-found: warn
+
+
+=======================================================================
+FILE: .gitignore
+=======================================================================
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+build/
+dist/
+results/runs/*.json
+results/figures/*.png
+results/sweep_*.json
+data/synthetic/*.wav
+!results/.gitkeep
+!results/runs/.gitkeep
+!results/figures/.gitkeep
+!data/.gitkeep
+!data/synthetic/.gitkeep
+!data/speech/.gitkeep
+.env
+
+*.bak
+*.bak[0-9]*
+b.sh
+
+
+=======================================================================
+FILE: HYPOTHESIS.md
+=======================================================================
+# Falsifiable Hypothesis
+
+For narrowband AM/FM decomposition (BW/fc < 0.25), an AM/FM-based representation
+supports speech transformations with equal-or-better reconstruction quality than
+STFT at comparable FLOP cost, and provides explicit phase information that STFT
+requires a separate predictor for.
+
+## Acceptance criteria
+
+1. AM/FM roundtrip SI-SDR within 3 dB of STFT on the synthetic corpus.
+2. Parallel representation (AM/FM + STFT) at crossover fusion beats the best
+   single representation by >= 1 dB SI-SDR at < 15% extra FLOPs.
+3. Narrowband sweep shows SNR cliff around BW/fc = 0.25.
+
+## Falsification
+
+If (1) fails by more than 3 dB, or (2) never holds, the hypothesis is rejected.
+
+
+=======================================================================
+FILE: README.md
+=======================================================================
+# ModuLab
+
+Empirical benchmark: AM/FM narrowband decomposition vs STFT for speech-to-speech manipulation.
+
+## Hypothesis
+
+AM/FM trades ~10x analysis FLOPs for a compact, phase-explicit representation.
+The win, if any, is conditional on downstream model scale and utterance length.
+
+## Quick start
+
+    modulab bench
+
+Produces RESULTS.md and results/figures/narrowband_sweep.png.
+
+## CLI
+
+    modulab bench
+    modulab sweep
+    modulab representations
+    modulab operators
+
+## Representations
+
+- stft
+- filterbank_amfm
+- parallel (wraps both, fusion = average or crossover)
+
+## What this is NOT
+
+No AI, no neural training, no ML. Pure physics + numerics.
+
+
+=======================================================================
+FILE: RESULTS.md
+=======================================================================
+
+---
+
+# Extended Analysis (sweeps from separate experiments)
+
+## Table 4 — Bedrosian decomposition fidelity (1D)
+
+fc=1000 Hz, am_freq=fm_freq=400 Hz, am_depth=0.5, float
+
+| β | Bed. ratio | AM SNR (dB) | FM SNR (dB) | Recon SNR (dB) |
+|---|---|---|---|---|
+| 0.05 | 0.61 | 83.0 | 21.3 | 37.2 |
+| 0.10 | 0.62 | 71.2 | 21.8 | 37.2 |
+| 0.25 | 0.67 | 56.3 | 21.3 | 37.2 |
+| 0.50 | 0.75 | 46.2 | 20.6 | 37.2 |
+| 0.75 | 0.86 | 41.7 | 20.5 | 37.2 |
+| 1.00 | 1.00 | 40.0 | 21.0 | 37.2 |
+| 1.50 | 1.50 | 46.8 | 22.0 | 37.2 |
+| 2.00 | 3.00 | 29.4 | 21.0 | 37.2 |
+| 3.00 | inf | 13.8 | 11.4 | 37.2 |
+| 4.00 | inf | 20.7 | 5.2 | 34.0 |
+| 6.00 | inf | 14.3 | 5.5 | 34.0 |
+
+**AM decomposition drops 69 dB (83 → 14) as envelope-carrier overlap crosses 1.0. Reconstruction SNR stays flat — the failure is structural, not numerical.**
+
+## Table 6 — Speech-like envelope tracking (fair comparison)
+
+Multi-formant (f0=120, F1=700, F2=1220, F3=2600), adaptive LPF
+
+| am_freq | LPF | AM_Thy | AM_env | STFT_lng | STFT_sht |
+|---|---|---|---|---|---|
+| 1.0 | 30 | 84.2 | 67.9 | 65.2 | 65.3 |
+| 2.0 | 30 | 95.7 | 69.7 | 63.8 | 66.5 |
+| 4.0 | 30 | 99.2 | 70.5 | 55.2 | 65.2 |
+| 8.0 | 30 | 97.6 | 70.5 | 44.3 | 63.9 |
+| 16.0 | 30 | 98.0 | 69.2 | 43.3 | 62.2 |
+| 32.0 | 48 | 98.7 | 60.4 | 40.3 | 58.6 |
+| 64.0 | 96 | 97.9 | 18.3 | -2.4 | 15.8 |
+| 128.0 | 192 | 41.2 | 7.1 | -65.0 | 4.1 |
+| 256.0 | 384 | 36.0 | 5.4 | -76.6 | -14.3 |
+| 512.0 | 500 | 26.5 | -2.2 | -69.4 | -60.9 |
+| 700.0 | 500 | 18.7 | -19.5 | -89.5 | -105.6 |
+
+**AM_Thy collapses at am_freq ≈ f0 = 120 Hz (pitch collision). AM_env vs short-window STFT tie within 5 dB at speech rates.**
+
+## Table 7 — FM tracking: multi-hop STFT vs AM/FM
+
+f0=1000 Hz, fm_depth=50 Hz, STFT n_fft=512
+
+| fm_freq | AM/FM | STFT hop=32 | STFT hop=128 | STFT hop=256 |
+|---|---|---|---|---|
+| 0.5 | 42.5 | 60.5 | 60.6 | -2.7 |
+| 1.0 | 43.3 | 57.5 | 55.6 | -2.1 |
+| 2.0 | 44.0 | 40.5 | 40.4 | -2.3 |
+| 4.0 | 44.0 | 29.2 | 29.5 | -1.7 |
+| 8.0 | 44.2 | 18.3 | 20.6 | -1.2 |
+| 16.0 | 44.3 | 10.8 | 13.2 | -1.4 |
+| 32.0 | 44.0 | 6.9 | 2.9 | -0.0 |
+| 64.0 | 43.8 | -0.1 | 0.0 | -0.0 |
+| 128.0 | 43.5 | -0.0 | -0.0 | -0.0 |
+| 200.0 | 43.8 | -0.0 | 0.0 | -0.0 |
+
+**Crossover at ~2 Hz. STFT wins slow vibrato (coherent window), AM/FM wins 4–200 Hz by 15–40 dB (sample-rate). STFT hop=256 fails at all rates — 2× overlap is below the 4× coherence threshold.**
+
+## Consolidated Verdict
+
+Across all experiments:
+
+1. **Cost**: AM/FM = 3.8× STFT FLOPs, 36× wall time. STFT wins.
+2. **Quantization**: AM/FM needs ≥12-bit FM. STFT robust at any bit.
+3. **Bedrosian**: AM/FM decomposition collapses by 69 dB when envelope-carrier overlap exceeds 1.0. Reconstruction SNR stays flat (>37 dB) — the failure is structural, invisible in recon metrics.
+4. **Envelope at speech rates**: AM/FM and short-window STFT are within ~5 dB. Neither dominates.
+5. **FM tracking**: STFT wins ≤2 Hz (+14–18 dB), AM/FM wins ≥4 Hz (+15–40 dB). Crossover at 2 Hz. STFT requires hop ≤ n_fft/4 for phase coherence — a constraint AM/FM doesn't have.
+6. **Pitch collision**: both fail when am_freq > f0. Fundamental limit of envelope-based representations.
+
+**Conclusion**: AM/FM is not faster or universally better than STFT, but it wins two specific regimes (envelope at speech rates, fast FM tracking above 2 Hz). The correct engineering answer is task-dependent selection, not universal substitution. The portfolio value is this regime map — quantified, empirical, honest.
+## Table 4 — Bedrosian decomposition fidelity (1D)
+
+*fc=1000 Hz, am_freq=fm_freq=400 Hz, am_depth=0.5, float precision*
+
+| β | Bed. ratio | AM SNR (dB) | FM SNR (dB) | Recon SNR (dB) |
+|---|---|---|---|---|
+| 0.05 | 0.61 | 82.95 | 21.28 | 37.22 |
+| 0.10 | 0.62 | 71.22 | 21.82 | 37.22 |
+| 0.25 | 0.67 | 56.30 | 21.32 | 37.22 |
+| 0.50 | 0.75 | 46.24 | 20.59 | 37.22 |
+| 0.75 | 0.86 | 41.68 | 20.52 | 37.22 |
+| 1.00 | 1.00 | 39.97 | 21.01 | 37.22 |
+| 1.50 | 1.50 | 46.79 | 22.01 | 37.22 |
+| 2.00 | 3.00 | 29.43 | 20.99 | 37.22 |
+| 3.00 | inf | 13.83 | 11.44 | 37.22 |
+| 4.00 | inf | 20.67 | 5.16 | 34.01 |
+| 6.00 | inf | 14.28 | 5.53 | 34.01 |
+
+**AM SNR drops 83 → 14 dB (69 dB) as envelope-carrier overlap crosses 1.0. Reconstruction SNR stays flat — the failure is structural, invisible in recon metrics.**
+
+## Table 5 — AM/FM interference diagram (β × am_depth)
+
+*fc=1000 Hz, am_freq=fm_freq=400 Hz. This varies envelope amplitude, not bandwidth, so it is NOT a Bedrosian test. It shows the resonance between AM depth and FM index: deeper AM makes AM estimation more robust to phase corruption from high FM index.*
+
+| β \ am_depth | 0.10 | 0.30 | 0.50 | 0.70 | 0.90 |
+|---|---|---|---|---|---|
+| 0.05 | 74.7 | 73.6 | 73.4 | 73.3 | 73.3 |
+| 0.25 | 60.7 | 48.0 | 46.8 | 46.3 | 46.0 |
+| 0.50 | 36.8 | 40.2 | 36.7 | 35.5 | 34.9 |
+| 0.75 | 22.8 | 41.5 | 32.2 | 30.0 | 28.9 |
+| 1.00 | 14.2 | 40.6 | 30.7 | 26.9 | 25.1 |
+| 1.50 | 2.9 | 18.6 | 38.9 | 24.9 | 21.2 |
+| 2.00 | -4.6 | 8.9 | 20.7 | 29.0 | 20.5 |
+| 3.00 | -12.9 | -1.1 | 6.6 | 14.4 | 21.7 |
+
+## Table 6 — Speech-like envelope tracking
+
+*Multi-formant (f0=120, F1=700, F2=1220, F3=2600), adaptive LPF, SI-SDR*
+
+| am_freq (Hz) | AM vs theory | AM env vs truth | STFT long | STFT short |
+|---|---|---|---|---|
+| 1.0 | 84.2 | 67.9 | 65.2 | 65.3 |
+| 2.0 | 95.7 | 69.7 | 63.8 | 66.5 |
+| 4.0 | 99.2 | 70.5 | 55.2 | 65.2 |
+| 8.0 | 97.6 | 70.5 | 44.3 | 63.9 |
+| 16.0 | 98.0 | 69.2 | 43.3 | 62.2 |
+| 32.0 | 98.7 | 60.4 | 40.3 | 58.6 |
+| 64.0 | 97.9 | 18.3 | -2.4 | 15.8 |
+| 128.0 | 41.2 | 7.1 | -65.0 | 4.1 |
+| 256.0 | 36.0 | 5.4 | -76.6 | -14.3 |
+| 512.0 | 26.5 | -2.2 | -69.4 | -60.9 |
+| 700.0 | 18.7 | -19.5 | -89.5 | -105.6 |
+
+**AM_Thy collapses at am_freq ≈ f0 = 120 Hz (pitch collision). AM/FM and short-window STFT tie within 5 dB at speech rates.**
+
+## Table 7 — FM tracking: multi-hop STFT vs AM/FM
+
+*f0=1000 Hz, fm_depth=50 Hz, STFT n_fft=512*
+
+| fm_freq (Hz) | AM/FM | STFT hop=32 | STFT hop=128 | STFT hop=256 |
+|---|---|---|---|---|
+| 0.5 | 42.5 | 60.5 | 60.6 | -2.7 |
+| 1.0 | 43.3 | 57.5 | 55.6 | -2.1 |
+| 2.0 | 44.0 | 40.5 | 40.4 | -2.3 |
+| 4.0 | 44.0 | 29.2 | 29.5 | -1.7 |
+| 8.0 | 44.2 | 18.3 | 20.6 | -1.2 |
+| 16.0 | 44.3 | 10.8 | 13.2 | -1.4 |
+| 32.0 | 44.0 | 6.9 | 2.9 | -0.0 |
+| 64.0 | 43.8 | -0.1 | 0.0 | -0.0 |
+| 128.0 | 43.5 | -0.0 | -0.0 | -0.0 |
+| 200.0 | 43.8 | -0.0 | 0.0 | -0.0 |
+
+**Crossover at ~2 Hz. STFT wins slow vibrato (long coherent window). AM/FM wins 4–200 Hz by 15–40 dB (sample-rate tracking). STFT hop=256 fails at all rates — insufficient overlap for phase coherence.**
+
+## Consolidated Verdict
+
+Across four independent experiments:
+
+1. **Cost**: AM/FM = 3.8× STFT FLOPs, ~40× wall time. STFT wins.
+2. **Quantization**: AM/FM unusable at 8-bit; needs ≥12-bit. STFT robust at any bit depth.
+3. **Bedrosian validity** (Table 4): AM decomposition drops 83 → 14 dB as envelope-carrier overlap crosses 1.0. Reconstruction SNR flat — failure is structural, hidden by recon metrics.
+4. **AM/FM interference** (Table 5): deeper envelope modulation makes AM estimation more robust to high FM index. Diagonal ridge in (β, am_depth). Not Bedrosian — resonance effect.
+5. **Speech envelope tracking** (Table 6): AM/FM and short-window STFT within 5 dB at speech rates. Both fail above am_freq ≈ f0 = 120 Hz (pitch collision) — fundamental limit of envelope representations.
+6. **FM tracking** (Table 7): STFT wins ≤2 Hz by 14–18 dB. AM/FM wins 4–200 Hz by 15–40 dB. Crossover at 2 Hz. STFT requires hop ≤ n_fft/4 for phase coherence.
+
+**Conclusion**: AM/FM is not faster or universally better than STFT. It wins two regimes (envelope at speech rates, fast FM tracking) and loses elsewhere (cost, quantization, slow-vibrato FM). The correct engineering answer is task-dependent selection. This regime map is the empirical result.
+
+=======================================================================
+FILE: benchmarks/reproduce.sh
+=======================================================================
+#!/usr/bin/env bash
+# One-command reproduction: regenerate RESULTS.md and figure
+set -euo pipefail
+source .venv/bin/activate
+python scripts/gen_synthetic.py
+pytest -q tests/ --timeout=180
+modulab bench
+echo "Done. See RESULTS.md"
+
+
+=======================================================================
+FILE: data/.gitkeep
+=======================================================================
+
+
+=======================================================================
+FILE: data/speech/.gitkeep
+=======================================================================
+
+
+=======================================================================
+FILE: data/synthetic/.gitkeep
+=======================================================================
+
+
+=======================================================================
+FILE: docs/adr/ADR-001-stft-baseline.md
+=======================================================================
+# ADR-001: STFT with n_fft=512, hop=128 as baseline
+
+Rationale: standard in speech processing, 32 ms analysis window matches typical
+filterbank group delay, comparable to published StS baselines.
+
+
+=======================================================================
+FILE: docs/adr/ADR-002-heterodyne.md
+=======================================================================
+# ADR-002: Heterodyne + biquad over complex bandpass
+
+Chosen for numerical stability, easier error attribution, and causal streaming
+compatibility. Complex bandpass kept as future comparison.
+
+
+=======================================================================
+FILE: docs/adr/ADR-003-metric-set.md
+=======================================================================
+# ADR-003: SNR + SI-SDR + MCD
+
+SNR alone hides perceptual failures. SI-SDR is scale-invariant. MCD measures
+spectral distortion. Together they cover the failure modes the benchmark targets.
+
+
+=======================================================================
+FILE: docs/adr/ADR-004-parallel-hypothesis.md
+=======================================================================
+# ADR-004: Parallel representation as a conditional hypothesis
+
+The parallel representation is added to test whether band-aware fusion of
+AM/FM and STFT beats either alone. Cost model is the exact sum of branches.
+The hypothesis is expected to be CONDITIONALLY supported at most.
+
+
+=======================================================================
+FILE: docs/theory/narrowband_condition.md
+=======================================================================
+# The Narrowband Condition for AM/FM Validity
+
+For a signal x(t) = A(t) cos(phi(t)), Bedrosian's theorem gives unique
+AM/FM decomposition only when the spectra of A and cos(phi) do not overlap.
+
+Practical condition: BW_band / fc_band < 0.25
+
+The ModuLab narrowband sweep plots this empirically.
+
+
+=======================================================================
+FILE: fs.md
+=======================================================================
+modulab/
+├── README.md                      # Pitch + hypothesis + results table + 3-command demo
+├── HYPOTHESIS.md                  # The falsifiable claim, restated precisely
+├── RESULTS.md                     # Auto-generated from last benchmark run
+├── LICENSE                        # Apache-2.0
+├── modulab_config.yaml            # Single source of truth (reproducibility)
+│
+├── docs/
+│   ├── theory/
+│   │   ├── narrowband_condition.md     # Derivation: BW/fc, Bedrosian, Teager-Kaiser
+│   │   ├── amfm_uniqueness.md          # Bedrosian theorem: when is AM/FM unique?
+│   │   └── error_analysis.md           # Where AM/FM decomposition fails, analytically
+│   ├── adr/
+│   │   ├── ADR-001-stft-baseline.md    # Why STFT with these params as baseline
+│   │   ├── ADR-002-heterodyne.md       # Heterodyne vs complex bandpass
+│   │   ├── ADR-003-metric-set.md       # Why SI-SDR+MCD+PESQ (not just SNR)
+│   │   └── ADR-004-dataset-curation.md # Speech clips + synthetic chirps
+│   ├── diagrams/
+│   └── reports/                        # Auto-generated HTML + PDF per run
+│
+├── modulab/                            # Python package
+│   ├── pyproject.toml
+│   ├── modulab/
+│   │   ├── config.py                   # Loads YAML → typed dataclass
+│   │   ├── representations/            # Pluggable: encode/decode
+│   │   │   ├── base.py                 # Abstract Representation
+│   │   │   ├── stft.py
+│   │   │   ├── filterbank_amfm.py
+│   │   │   ├── gammatone_amfm.py
+│   │   │   ├── cqt.py                  # Comparison only
+│   │   │   └── mel.py                  # Comparison only
+│   │   ├── operators/                  # Pluggable: transform-in-domain
+│   │   │   ├── base.py
+│   │   │   ├── passthrough.py          # Upper bound on reconstruction quality
+│   │   │   ├── time_stretch.py
+│   │   │   ├── pitch_shift.py
+│   │   │   ├── noise_gate.py
+│   │   │   └── formant_shift.py        # Stretch-specific
+│   │   ├── metrics/
+│   │   │   ├── quality.py              # SI-SDR, SNR, MCD, PESQ, STOI
+│   │   │   ├── cost.py                 # FLOPs, wall-time, peak RAM
+│   │   │   ├── sparsity.py             # Nonzero fraction, entropy
+│   │   │   └── flops.py                # Analytic + profiled FLOP counter
+│   │   ├── harness/
+│   │   │   ├── runner.py               # Orchestrates the matrix
+│   │   │   ├── matrix.py               # (repr × op × clip × seed)
+│   │   │   └── report.py               # JSON → markdown + plots
+│   │   ├── viz/
+│   │   │   ├── spectrogram.py
+│   │   │   ├── amfm_trace.py           # AM/FM vs time per band
+│   │   │   ├── error_maps.py           # Reconstruction error heatmap
+│   │   │   └── cost_curves.py          # FLOPs vs. BW/fc
+│   │   └── data/
+│   │       ├── loaders.py              # speech clips + synthetic chirps
+│   │       └── synth.py                # Chirp, AM tone, FM tone, test signals
+│   ├── tests/
+│   │   ├── test_representations.py     # Roundtrip fidelity bounds
+│   │   ├── test_operators.py           # Op correctness (known-input invariants)
+│   │   ├── test_metrics.py             # Known-value sanity tests
+│   │   └── test_harness.py             # Matrix completeness, reproducibility
+│   └── notebooks/
+│       ├── 01_narrowband_theory.ipynb  # Interactive derivation + plots
+│       ├── 02_amfm_vs_stft.ipynb       # First manual comparison
+│       └── 03_failure_modes.ipynb      # Where AM/FM breaks
+│
+├── benchmarks/                         # CLI entrypoints
+│   ├── run_benchmark.py                # Full matrix
+│   ├── run_analysis.py                 # Narrowband-ratio sweep
+│   └── reproduce.sh                    # One-command reproduction
+│
+├── data/
+│   ├── speech/                         # git-lfs: ~20 clips, ~30 s total
+│   │   ├── librispeech_dev_clean/
+│   │   ├── vctk_subset/
+│   │   └── manifest.json
+│   └── synthetic/                      # Generated, versioned by seed
+│
+├── results/
+│   ├── runs/                           # JSON: one per benchmark run (with config hash)
+│   ├── figures/                        # PNG/SVG
+│   └── latest -> runs/YYYY-MM-DD_hhmmss # Symlink for report
+│
+├── scripts/
+│   ├── gen_synthetic.py                # Deterministic test signals
+│   ├── profile_flops.py                # Static FLOP analysis
+│   └── gen_report.py                   # results/*.json → RESULTS.md + plots
+│
+├── docker/
+│   └── Dockerfile                      # Pinned: python, numpy, scipy, librosa, pypesq
+│
+├── .pre-commit-config.yaml
+└── .github/workflows/
+    ├── test.yml                        # pytest + ruff + mypy
+    ├── benchmark_smoke.yml             # Tiny matrix on synthetic (CI <2 min)
+    └── docs.yml
+
+
+=======================================================================
+FILE: modulab/__init__.py
+=======================================================================
+# ModuLab package
+__version__ = "0.2.0"
+
+
+=======================================================================
+FILE: modulab/__main__.py
+=======================================================================
+import sys
+from modulab.cli import main
+
+if __name__ == "__main__":
+    sys.exit(main())
+
+
+=======================================================================
+FILE: modulab/cli.py
+=======================================================================
+"""ModuLab CLI — argparse-based, zero external dependencies."""
+from __future__ import annotations
+import argparse
+import sys
+from pathlib import Path
+
+from modulab.config import Config
+from modulab.harness import run_benchmark, run_narrowband_sweep
+from modulab.harness.report import generate_report
+from modulab import representations as repr_reg
+from modulab import operators as op_reg
+
+
+def cmd_bench(args):
+    cfg = Config.load(args.config)
+    print(f"Config hash: {cfg.hash}")
+    results = run_benchmark(cfg, Path("results/runs"))
+    sweep = run_narrowband_sweep(cfg, Path("results"))
+    generate_report(results, sweep, Path("results/figures"), Path(args.config))
+    print("Done. See RESULTS.md")
+
+
+def cmd_sweep(args):
+    cfg = Config.load(args.config)
+    run_narrowband_sweep(cfg, Path("results"))
+
+
+def cmd_representations(args):
+    for name in repr_reg.REGISTRY:
+        print(name)
+
+
+def cmd_operators(args):
+    for name in op_reg.REGISTRY:
+        print(name)
+
+
+
+def cmd_bedrosian2d(args):
+    cfg = Config.load(args.config)
+    run_bedrosian_2d_sweep(cfg, Path("results"))
+
+
+def cmd_speech_like(args):
+    cfg = Config.load(args.config)
+    run_speech_like_sweep(cfg, Path("results"))
+
+
+def cmd_fm_sweep(args):
+    cfg = Config.load(args.config)
+    run_fm_sweep(cfg, Path("results"))
+
+def main(argv=None):
+    p = argparse.ArgumentParser(prog="modulab", description="AM/FM vs STFT benchmark")
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    b = sub.add_parser("bench")
+    b.add_argument("--config", default="modulab_config.yaml")
+    b.set_defaults(fn=cmd_bench)
+
+    s = sub.add_parser("sweep")
+    s.add_argument("--config", default="modulab_config.yaml")
+    s.set_defaults(fn=cmd_sweep)
+
+    sub.add_parser("representations").set_defaults(fn=cmd_representations)
+    sub.add_parser("operators").set_defaults(fn=cmd_operators)
+
+    args = p.parse_args(argv)
+    return args.fn(args) or 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+
+
+=======================================================================
+FILE: modulab/config.py
+=======================================================================
+from __future__ import annotations
+import hashlib
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+
+@dataclass(frozen=True)
+class Config:
+    raw: dict[str, Any]
+    hash: str
+
+    @classmethod
+    def load(cls, path: str | Path = "modulab_config.yaml") -> "Config":
+        text = Path(path).read_text()
+        raw = yaml.safe_load(text)
+        h = hashlib.sha256(text.encode()).hexdigest()[:12]
+        return cls(raw=raw, hash=h)
+
+    def get(self, *keys: str, default: Any = None) -> Any:
+        cur: Any = self.raw
+        for k in keys:
+            if not isinstance(cur, dict) or k not in cur:
+                return default
+            cur = cur[k]
+        return cur
+
+    @property
+    def fs(self) -> int:
+        return int(self.raw["audio"]["fs"])
+
+    @property
+    def duration_s(self) -> float:
+        return float(self.raw["audio"]["duration_s"])
+
+
+=======================================================================
+FILE: modulab/data/__init__.py
+=======================================================================
+from .synth import generate_synthetic_corpus, formant_vowel, am_fm_tone
+
+
+=======================================================================
+FILE: modulab/data/synth.py
+=======================================================================
+from __future__ import annotations
+import numpy as np
+
+
+def formant_vowel(fs, duration_s, f0=120.0, formants=(700, 1220, 2600), seed=0):
+    rng = np.random.default_rng(seed)
+    t = np.arange(int(fs * duration_s)) / fs
+    f0_inst = f0 + 5 * np.sin(2 * np.pi * 0.5 * t) + 2 * rng.standard_normal(len(t)).cumsum() * 0.001
+    phase = 2 * np.pi * np.cumsum(f0_inst) / fs
+    y = np.zeros_like(t)
+    for h in range(1, 31):
+        fh = h * f0
+        if fh > fs / 2 - 200:
+            break
+        amp = 0.0
+        for F in formants:
+            bw = 80.0
+            amp += 1.0 / (1.0 + ((fh - F) / (bw / 2)) ** 2)
+        y += amp * np.sin(h * phase + rng.uniform(0, 2 * np.pi))
+    y /= (np.abs(y).max() + 1e-12)
+    env = np.ones_like(t)
+    for start in [0.1, 0.9, 1.7, 2.4]:
+        if start < duration_s:
+            env *= 1.0 - 0.5 * np.exp(-((t - start) ** 2) / 0.02)
+    return (y * env).astype(np.float32)
+
+
+def am_fm_tone(fs, duration_s, fc, am_freq=5.0, am_depth=0.5,
+               fm_freq=10.0, fm_depth=20.0, seed=0):
+    t = np.arange(int(fs * duration_s)) / fs
+    env = 1.0 + am_depth * np.cos(2 * np.pi * am_freq * t)
+    phase = 2 * np.pi * fc * t + (fm_depth / fm_freq) * np.sin(2 * np.pi * fm_freq * t)
+    return (env * np.cos(phase)).astype(np.float32)
+
+
+def generate_synthetic_corpus(fs, duration_s):
+    return {
+        "vowel_a": formant_vowel(fs, duration_s, f0=120, formants=(730, 1090, 2440), seed=1),
+        "vowel_i": formant_vowel(fs, duration_s, f0=140, formants=(270, 2290, 3010), seed=2),
+        "vowel_u": formant_vowel(fs, duration_s, f0=100, formants=(300, 870, 2240), seed=3),
+        "am_tone_1k": am_fm_tone(fs, duration_s, fc=1000, am_freq=5, am_depth=0.5, fm_freq=10, fm_depth=10),
+        "fm_tone_1k": am_fm_tone(fs, duration_s, fc=1000, am_freq=0.5, am_depth=0.1, fm_freq=20, fm_depth=50),
+        "amfm_tone_2k": am_fm_tone(fs, duration_s, fc=2000, am_freq=4, am_depth=0.6, fm_freq=8, fm_depth=30),
+    }
+
+
+=======================================================================
+FILE: modulab/harness/__init__.py
+=======================================================================
+from .runner import run_benchmark, run_narrowband_sweep
+
+
+=======================================================================
+FILE: modulab/harness/report.py
+=======================================================================
+from __future__ import annotations
+from pathlib import Path
+from collections import defaultdict
+import numpy as np
+
+
+def _fmt(v, nd=2):
+    if isinstance(v, float):
+        return "n/a" if np.isnan(v) else f"{v:.{nd}f}"
+    return str(v)
+
+
+def generate_report(results, sweep, out_dir, config_path):
+    L = []
+    L.append("# ModuLab Benchmark Results")
+    L.append("")
+    L.append(f"**Config hash**: `{results['config_hash']}`  ")
+    L.append(f"**Sample rate**: {results['fs']} Hz  ")
+    L.append(f"**Duration**: {results['duration_s']} s  ")
+    L.append(f"**Total runs**: {len(results['runs'])}")
+    L.append("")
+
+    L.append("## Table 1 - Quality at passthrough")
+    L.append("")
+    L.append("| Representation | Bits | SNR (dB) | SI-SDR (dB) | MCD (dB) |")
+    L.append("|---|---|---|---|---|")
+    agg = defaultdict(lambda: defaultdict(list))
+    for r in results["runs"]:
+        if "error" in r or r.get("op") != "passthrough":
+            continue
+        key = (r["repr"], r["bits"])
+        for m, v in r["metrics"].items():
+            agg[key][m].append(v)
+    for (rn, b) in sorted(agg.keys()):
+        m = {k: float(np.nanmean(v)) for k, v in agg[(rn, b)].items()}
+        L.append(f"| {rn} | {b} | {_fmt(m.get('snr_db'))} | "
+                 f"{_fmt(m.get('si_sdr_db'))} | {_fmt(m.get('mcd_db'))} |")
+    L.append("")
+
+    L.append("## Table 2 - Computational cost")
+    L.append("")
+    L.append("| Representation | FLOPs encode | FLOPs decode | Wall ms enc | Wall ms dec |")
+    L.append("|---|---|---|---|---|")
+    agg2 = defaultdict(lambda: defaultdict(list))
+    for r in results["runs"]:
+        if "error" in r:
+            continue
+        agg2[r["repr"]]["flops_encode"].append(r["flops_encode"])
+        agg2[r["repr"]]["flops_decode"].append(r["flops_decode"])
+        agg2[r["repr"]]["wall_ms_encode"].append(r["wall_ms_encode"])
+        agg2[r["repr"]]["wall_ms_decode"].append(r["wall_ms_decode"])
+    for rn in sorted(agg2.keys()):
+        m = {k: float(np.mean(v)) for k, v in agg2[rn].items()}
+        L.append(f"| {rn} | {m['flops_encode']:.2e} | {m['flops_decode']:.2e} | "
+                 f"{_fmt(m['wall_ms_encode'])} | {_fmt(m['wall_ms_decode'])} |")
+    L.append("")
+
+    if sweep and "sweep" in sweep:
+        bits_label = (sweep["sweep"][0].get("bits", 8) if sweep and sweep.get("sweep") else 8)
+        L.append(f"## Table 3 - Narrowband sweep ({bits_label}-bit, single band)")
+        L.append("")
+        L.append("| fc (Hz) | BW/fc | BW (Hz) | SNR (dB) |")
+        L.append("|---|---|---|---|")
+        for row in sweep["sweep"]:
+            L.append(f"| {row['fc_hz']:.0f} | {row['bw_ratio']:.2f} | "
+                     f"{row['bw_hz']:.0f} | {row['snr_db']:.2f} |")
+        L.append("")
+        try:
+            import matplotlib
+            matplotlib.use("Agg")
+            import matplotlib.pyplot as plt
+            fig, ax = plt.subplots(figsize=(8, 5))
+            for fc in sorted(set(r["fc_hz"] for r in sweep["sweep"])):
+                pts = sorted([r for r in sweep["sweep"] if r["fc_hz"] == fc],
+                             key=lambda z: z["bw_ratio"])
+                ax.plot([p["bw_ratio"] for p in pts], [p["snr_db"] for p in pts],
+                        marker="o", label=f"fc={fc:.0f} Hz")
+            ax.axvline(0.25, linestyle="--", color="gray", alpha=0.6,
+                       label="Narrowband limit (BW/fc=0.25)")
+            ax.set_xlabel("BW / fc")
+            ax.set_ylabel("Reconstruction SNR (dB)")
+            ax.set_title("AM/FM Reconstruction Quality vs Narrowband Ratio")
+            ax.grid(True, alpha=0.3)
+            ax.legend()
+            out_dir.mkdir(parents=True, exist_ok=True)
+            fig_path = out_dir / "narrowband_sweep.png"
+            fig.savefig(fig_path, dpi=120, bbox_inches="tight")
+            plt.close(fig)
+            L.append(f"![Narrowband sweep]({fig_path.name})")
+            L.append("")
+        except Exception as e:
+            L.append(f"(Plot failed: {e})")
+            L.append("")
+
+    L.append("## Verdict")
+    L.append("")
+    try:
+        if ("filterbank_amfm", 8) in agg and ("stft", 8) in agg:
+            a_snr = float(np.nanmean(agg[("filterbank_amfm", 8)]["snr_db"]))
+            s_snr = float(np.nanmean(agg[("stft", 8)]["snr_db"]))
+            a_f = float(np.mean(agg2["filterbank_amfm"]["flops_encode"]))
+            s_f = float(np.mean(agg2["stft"]["flops_encode"]))
+            L.append(f"At 8-bit, AM/FM SNR {a_snr:.1f} dB vs STFT {s_snr:.1f} dB; "
+                     f"AM/FM encode {a_f:.2e} FLOPs vs STFT {s_f:.2e} FLOPs.")
+        if "parallel" in agg2:
+            par_f = float(np.mean(agg2["parallel"]["flops_encode"]))
+            L.append(f"Parallel encode costs {par_f:.2e} FLOPs "
+                     f"(sum of branches, no discount).")
+        if sweep and "sweep" in sweep:
+            nb = [r for r in sweep["sweep"] if r["bw_ratio"] <= 0.25]
+            wb = [r for r in sweep["sweep"] if r["bw_ratio"] >= 0.5]
+            if nb and wb:
+                L.append(f"Narrowband (BW/fc<=0.25) SNR {np.mean([r['snr_db'] for r in nb]):.1f} dB "
+                         f"vs wideband (BW/fc>=0.5) {np.mean([r['snr_db'] for r in wb]):.1f} dB.")
+    except Exception as e:
+        L.append(f"(Verdict failed: {e})")
+    L.append("")
+
+    text = "\n".join(L)
+    Path("RESULTS.md").write_text(text)
+    return text
+
+
+=======================================================================
+FILE: modulab/harness/runner.py
+=======================================================================
+from __future__ import annotations
+import json
+import time
+from pathlib import Path
+
+import numpy as np
+
+from modulab.config import Config
+from modulab import representations as repr_reg
+from modulab import operators as op_reg
+from modulab.metrics import REGISTRY as METRIC_REG
+from modulab.metrics.cost import wall_time_ms
+from modulab.data.synth import generate_synthetic_corpus
+
+
+def _run_one(repr_obj, op_obj, x, fs, bits):
+    enc, enc_ms, enc_peak = wall_time_ms(lambda: repr_obj.encode(x, fs))
+    enc_q = repr_obj.quantize(enc, bits) if bits < 16 else enc
+    enc_op = repr_obj.apply_operator(enc_q, op_obj)
+    x_out, dec_ms, dec_peak = wall_time_ms(lambda: repr_obj.decode(enc_op))
+    n = min(len(x), len(x_out))
+    metrics = {}
+    for name, fn in METRIC_REG.items():
+        try:
+            metrics[name] = fn(x[:n], x_out[:n], fs) if name == "mcd_db" else fn(x[:n], x_out[:n])
+        except Exception:
+            metrics[name] = float("nan")
+    return {
+        "metrics": metrics,
+        "wall_ms_encode": enc_ms, "wall_ms_decode": dec_ms,
+        "peak_mb_encode": enc_peak, "peak_mb_decode": dec_peak,
+        "flops_encode": repr_obj.flops_encode(len(x)),
+        "flops_decode": repr_obj.flops_decode(len(x)),
+    }
+
+
+def run_benchmark(cfg: Config, out_dir: Path):
+    fs = cfg.fs
+    duration = cfg.duration_s
+    signals = generate_synthetic_corpus(fs, duration)
+    repr_names = list((cfg.raw.get("representations") or {}).keys())
+    if not repr_names:
+        repr_names = ["stft", "filterbank_amfm"]
+    ops = list(op_reg.REGISTRY.keys())
+    bits_list = cfg.get("quantization", "bit_widths", default=[4, 8, 16])
+
+    results = {"config_hash": cfg.hash, "fs": fs, "duration_s": duration, "runs": []}
+    print(f"  Matrix: {len(repr_names)} repr x {len(ops)} ops x {len(bits_list)} bits x {len(signals)} signals")
+    for rname in repr_names:
+        try:
+            r = repr_reg.build(rname, cfg)
+        except Exception as e:
+            print(f"  Skip {rname}: {e}")
+            continue
+        print(f"  [{rname}] {r.info()}")
+        for oname in ops:
+            try:
+                op = op_reg.build(oname)
+            except Exception:
+                continue
+            if not op.compatible(rname) and rname != "parallel":
+                continue
+            for bits in bits_list:
+                for sname, x in signals.items():
+                    try:
+                        rec = _run_one(r, op, x, fs, bits)
+                        rec.update({"repr": rname, "op": oname, "bits": bits, "signal": sname})
+                        results["runs"].append(rec)
+                    except Exception as e:
+                        results["runs"].append({"repr": rname, "op": oname, "bits": bits,
+                                                "signal": sname, "error": str(e)})
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_file = out_dir / f"run_{int(time.time())}.json"
+    out_file.write_text(json.dumps(results, indent=2, default=float))
+    print(f"  Wrote {out_file}")
+    return results
+
+
+def run_narrowband_sweep(cfg: Config, out_dir: Path):
+    from modulab.data.synth import am_fm_tone
+    from scipy.signal import butter, sosfiltfilt, hilbert
+    fs = cfg.fs
+    duration = cfg.duration_s
+    fcs = cfg.get("narrowband_sweep", "fc_hz", default=[500, 1000, 2000, 4000])
+    ratios = cfg.get("narrowband_sweep", "bw_ratios", default=[0.05, 0.1, 0.2, 0.5, 1.0])
+    mod = cfg.get("narrowband_sweep", "modulation", default={})
+    bits = int(cfg.get("narrowband_sweep", "bits", default=12))
+
+    sweep = []
+    print(f"  Sweep: {len(fcs)} fc x {len(ratios)} bw ratios @ {bits}-bit")
+    for fc in fcs:
+        for r in ratios:
+            # Scale FM depth with r*fc so signal bandwidth tracks filter BW.
+            # fm_depth_ratio=0.25 means FM deviation is 25% of target bandwidth.
+            fm_depth_ratio = float(mod.get("fm_depth_ratio", 0.25))
+            fm_depth = fm_depth_ratio * fc * r
+            am_depth = float(mod.get("am_depth", 0.5))
+            x = am_fm_tone(fs, duration, fc=fc, am_freq=r * fc / 4,
+                           am_depth=am_depth,
+                           fm_freq=r * fc / 4,
+                           fm_depth=fm_depth)
+            nyq = fs / 2.0
+            lo = max((fc - r * fc / 2) / nyq, 0.001)
+            hi = min((fc + r * fc / 2) / nyq, 0.999)
+            sos = butter(4, [lo, hi], btype="band", output="sos")
+            xk = sosfiltfilt(sos, x)
+            a = hilbert(xk)
+            am = np.abs(a)
+            ph = np.unwrap(np.angle(a))
+            car = 2 * np.pi * fc * np.arange(len(x)) / fs
+            res = ph - car
+            # CRITICAL: preserve phase0 BEFORE zeroing
+            phase0 = float(res[0])
+            res = res - phase0
+            # First-difference with leading zero: cumsum exactly inverts
+            fm = np.zeros_like(res)
+            fm[1:] = np.diff(res) * fs / (2 * np.pi)
+
+            # Configurable bit-width quantization
+            am_levels = 2 ** bits - 1
+            am_max = float(am.max()) + 1e-12
+            am_q = np.round(am / am_max * am_levels) / am_levels * am_max
+            fm_levels = 2 ** (bits - 1) - 1
+            fm_max = float(np.abs(fm).max()) + 1e-12
+            fm_q = np.round(fm / fm_max * fm_levels) / fm_levels * fm_max
+
+            # Reconstruct with phase0 restored
+            t = np.arange(len(x)) / fs
+            rec_res = 2 * np.pi * np.cumsum(fm_q) / fs
+            rec_phase = phase0 + 2 * np.pi * fc * t + rec_res
+            x_rec = am_q * np.cos(rec_phase)
+
+            # CRITICAL FIX: compare against FILTERED reference (xk), not original (x).
+            # Reconstruction is of xk, so xk is the right target.
+            # Skip 10% edges to remove sosfiltfilt transient artifacts.
+            n_full = min(len(xk), len(x_rec))
+            edge = int(0.10 * n_full)
+            n = n_full - 2 * edge
+            x_ref = xk[edge:edge + n]
+            x_est = x_rec[edge:edge + n]
+            noise = x_ref - x_est
+            snr = 10 * np.log10((np.sum(x_ref ** 2) + 1e-20) /
+                                (np.sum(noise ** 2) + 1e-20))
+            # Also record full-signal SNR (x vs x_rec) for comparison
+            noise_full = x[:n_full] - x_rec[:n_full]
+            snr_vs_original = 10 * np.log10(
+                (np.sum(x[:n_full] ** 2) + 1e-20) /
+                (np.sum(noise_full ** 2) + 1e-20))
+            sweep.append({"fc_hz": float(fc), "bw_ratio": float(r),
+                          "bw_hz": float(r * fc), "snr_db": float(snr),
+                          "snr_vs_original_db": float(snr_vs_original),
+                          "bits": bits})
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_file = out_dir / f"sweep_{int(time.time())}.json"
+    out_file.write_text(json.dumps(sweep, indent=2))
+    print(f"  Wrote {out_file}")
+    if max(s["snr_db"] for s in sweep) < 0:
+        print(f"  WARNING: max SNR = {max(s['snr_db'] for s in sweep):.1f} dB")
+        print(f"  Expected >10 dB for narrowband cases. Check phase or filter stability.")
+    return {"sweep": sweep, "out_file": str(out_file)}
+
+
+def run_bedrosian_sweep(cfg: Config, out_dir: Path):
+    """Bedrosian test: compare hilbert-derived AM/FM to theoretical ground truth.
+    Reconstruction SNR is reported but is NOT the metric — it stays flat
+    because hilbert(x) always reconstructs x. The real test is decomposition
+    error vs. theory."""
+    from scipy.signal import hilbert
+    fs = cfg.fs
+    duration = cfg.duration_s
+    fc = float(cfg.get("bedrosian_sweep", "fc_hz", default=1000.0))
+    fm_freq = float(cfg.get("bedrosian_sweep", "fm_freq_hz", default=400.0))
+    am_freq = float(cfg.get("bedrosian_sweep", "am_freq_hz", default=400.0))
+    am_depth = float(cfg.get("bedrosian_sweep", "am_depth", default=0.5))
+    betas = cfg.get("bedrosian_sweep", "betas",
+                    default=[0.05, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0])
+    bits = int(cfg.get("bedrosian_sweep", "bits", default=0))  # 0 => float
+
+    rows = []
+    n = int(fs * duration)
+    t = np.arange(n) / fs
+    car_phase = 2 * np.pi * fc * t
+    edge = int(0.05 * n)
+
+    print(f"  Bedrosian sweep: fc={fc} am_freq={am_freq} fm_freq={fm_freq} "
+          f"bits={'float' if bits == 0 else bits}")
+    for beta in betas:
+        fm_depth = beta * fm_freq
+        env = 1.0 + am_depth * np.cos(2 * np.pi * am_freq * t)
+        inst_phase = car_phase + (fm_depth / fm_freq) * np.sin(2 * np.pi * fm_freq * t)
+        x = (env * np.cos(inst_phase)).astype(np.float32)
+
+        # hilbert(x) gives analytic AM and phase
+        a = hilbert(x)
+        am_est = np.abs(a)
+        ph_est = np.unwrap(np.angle(a))
+        res = ph_est - car_phase
+        phase0 = float(res[0])
+        res = res - phase0
+        fm_est = np.zeros(n, dtype=np.float64)
+        fm_est[1:] = np.diff(res) * fs / (2 * np.pi)
+
+        # Theoretical ground truth
+        am_true = env
+        fm_true = fm_depth * np.cos(2 * np.pi * fm_freq * t)
+
+        # Decomposition error (skip edges — hilbert boundary effects)
+        am_true_c = am_true[edge:n-edge]
+        am_est_c = am_est[edge:n-edge]
+        am_ref_pow = np.sqrt(np.mean(am_true_c ** 2))
+        am_err_pow = np.sqrt(np.mean((am_est_c - am_true_c) ** 2)) + 1e-20
+        am_snr_db = 20 * np.log10(am_ref_pow / am_err_pow)
+
+        fm_true_c = fm_true[edge:n-edge]
+        fm_est_c = fm_est[edge:n-edge]
+        fm_ref_pow = np.sqrt(np.mean(fm_true_c ** 2))
+        fm_err_pow = np.sqrt(np.mean((fm_est_c - fm_true_c) ** 2)) + 1e-20
+        fm_snr_db = 20 * np.log10(fm_ref_pow / fm_err_pow)
+
+        # Reconstruction SNR (for reference — will be flat)
+        if bits == 0:
+            am_q, fm_q = am_est, fm_est
+        else:
+            am_lv = 2 ** bits - 1
+            am_max = float(am_est.max()) + 1e-12
+            am_q = np.round(am_est / am_max * am_lv) / am_lv * am_max
+            fm_lv = 2 ** (bits - 1) - 1
+            fm_max = float(np.abs(fm_est).max()) + 1e-12
+            fm_q = np.round(fm_est / fm_max * fm_lv) / fm_lv * fm_max
+
+        rec_phase = phase0 + car_phase + 2 * np.pi * np.cumsum(fm_q) / fs
+        x_rec = am_q * np.cos(rec_phase)
+        noise = x - x_rec
+        recon_snr = 10 * np.log10((np.sum(x ** 2) + 1e-20) /
+                                  (np.sum(noise ** 2) + 1e-20))
+
+        # Bedrosian ratio: envelope_upper / carrier_lower
+        env_upper = am_freq * (1 + am_depth)
+        carrier_lower = fc - fm_depth
+        bed_ratio = env_upper / carrier_lower if carrier_lower > 0 else float("inf")
+
+        rows.append({
+            "beta": float(beta),
+            "recon_snr_db": float(recon_snr),
+            "am_snr_db": float(am_snr_db),
+            "fm_snr_db": float(fm_snr_db),
+            "bedrosian_ratio": float(bed_ratio),
+            "bits": bits,
+        })
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_file = out_dir / f"bedrosian_{int(time.time())}.json"
+    out_file.write_text(json.dumps(rows, indent=2))
+    print(f"  Wrote {out_file}")
+
+    print()
+    print(f"  {'beta':>6}  {'Bed.':>6}  {'AM SNR':>8}  {'FM SNR':>8}  {'Recon':>8}")
+    print(f"  {'-'*6}  {'-'*6}  {'-'*8}  {'-'*8}  {'-'*8}")
+    for r in rows:
+        bed = r["bedrosian_ratio"]
+        bed_str = f"{bed:>6.2f}" if bed != float("inf") else "   inf"
+        print(f"  {r['beta']:>6.2f}  {bed_str}  {r['am_snr_db']:>7.2f}dB  "
+              f"{r['fm_snr_db']:>7.2f}dB  {r['recon_snr_db']:>7.2f}dB")
+
+    # Cliff detection on AM/FM decomposition (not recon!)
+    am_snrs = [r["am_snr_db"] for r in rows]
+    fm_snrs = [r["fm_snr_db"] for r in rows]
+    low = [r for r in rows if r["bedrosian_ratio"] < 0.5]
+    high = [r for r in rows if r["bedrosian_ratio"] > 1.5]
+    print()
+    if low and high:
+        am_drop = (np.mean([r["am_snr_db"] for r in low]) -
+                   np.mean([r["am_snr_db"] for r in high]))
+        fm_drop = (np.mean([r["fm_snr_db"] for r in low]) -
+                   np.mean([r["fm_snr_db"] for r in high]))
+        print(f"  AM SNR drop  (Bed<0.5 -> Bed>1.5): {am_drop:+.1f} dB")
+        print(f"  FM SNR drop  (Bed<0.5 -> Bed>1.5): {fm_drop:+.1f} dB")
+        print(f"  Recon SNR range                   : "
+              f"{max(r['recon_snr_db'] for r in rows) - min(r['recon_snr_db'] for r in rows):.1f} dB")
+        if max(am_drop, fm_drop) > 15:
+            print("  ✅ Bedrosian cliff visible in decomposition error")
+        elif max(am_drop, fm_drop) > 5:
+            print("  ⚠️  Weak cliff — but decomposition error IS the right metric")
+        else:
+            print("  ❌ No cliff even in decomposition error")
+    return {"bedrosian": rows, "out_file": str(out_file)}
+
+
+def run_bedrosian_2d_sweep(cfg: Config, out_dir: Path):
+    """2D Bedrosian sweep: beta x am_depth. Measures AM and FM decomposition
+    accuracy against ground truth. Expected result: cliff moves to lower beta
+    as am_depth increases (envelope spectrum widens)."""
+    from scipy.signal import hilbert
+
+    fs = cfg.fs
+    duration = cfg.duration_s
+    fc = float(cfg.get("bedrosian_2d", "fc_hz", default=1000.0))
+    fm_freq = float(cfg.get("bedrosian_2d", "fm_freq_hz", default=400.0))
+    am_freq = float(cfg.get("bedrosian_2d", "am_freq_hz", default=400.0))
+    betas = cfg.get("bedrosian_2d", "betas",
+                    default=[0.05, 0.25, 0.50, 0.75, 1.00, 1.50, 2.00, 3.00])
+    am_depths = cfg.get("bedrosian_2d", "am_depths",
+                        default=[0.10, 0.30, 0.50, 0.70, 0.90])
+
+    n = int(fs * duration)
+    t = np.arange(n) / fs
+    car_phase = 2 * np.pi * fc * t
+    edge = int(0.05 * n)
+
+    def _pow_snr(ref, est):
+        ref = ref - np.mean(ref)
+        est = est - np.mean(est)
+        ref_pow = np.sqrt(np.mean(ref ** 2)) + 1e-20
+        err_pow = np.sqrt(np.mean((est - ref) ** 2)) + 1e-20
+        return 20 * np.log10(ref_pow / err_pow)
+
+    print(f"  2D sweep: fc={fc} am_freq={am_freq} fm_freq={fm_freq}")
+    print(f"  Grid: {len(betas)} beta x {len(am_depths)} am_depth = "
+          f"{len(betas) * len(am_depths)} cells")
+
+    rows = []
+    for am_depth in am_depths:
+        for beta in betas:
+            fm_depth = beta * fm_freq
+            env = 1.0 + am_depth * np.cos(2 * np.pi * am_freq * t)
+            inst_phase = car_phase + (fm_depth / fm_freq) * np.sin(2 * np.pi * fm_freq * t)
+            x = (env * np.cos(inst_phase)).astype(np.float32)
+
+            a = hilbert(x)
+            am_est = np.abs(a)
+            ph_est = np.unwrap(np.angle(a))
+            res = ph_est - car_phase
+            res = res - res[0]
+            fm_est = np.zeros(n, dtype=np.float64)
+            fm_est[1:] = np.diff(res) * fs / (2 * np.pi)
+
+            am_true = env
+            fm_true = fm_depth * np.cos(2 * np.pi * fm_freq * t)
+
+            am_snr = _pow_snr(am_true[edge:n - edge], am_est[edge:n - edge])
+            fm_snr = _pow_snr(fm_true[edge:n - edge], fm_est[edge:n - edge])
+
+            env_upper = am_freq * (1 + am_depth)
+            carrier_lower = fc - fm_depth
+            bed_ratio = (env_upper / carrier_lower
+                         if carrier_lower > 0 else float("inf"))
+
+            rows.append({
+                "beta": float(beta),
+                "am_depth": float(am_depth),
+                "am_snr_db": float(am_snr),
+                "fm_snr_db": float(fm_snr),
+                "bedrosian_ratio": float(bed_ratio),
+                "env_upper_hz": float(env_upper),
+                "carrier_lower_hz": float(carrier_lower),
+            })
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_file = out_dir / f"bedrosian_2d_{int(time.time())}.json"
+    out_file.write_text(json.dumps(rows, indent=2))
+    print(f"  Wrote {out_file}")
+
+    # --- ASCII heatmaps ---
+    def _snr_char(v):
+        if v >= 60: return "█"
+        if v >= 40: return "▓"
+        if v >= 20: return "▒"
+        if v >= 0:  return "░"
+        return "·"
+
+    def _print_heatmap(metric_key, title):
+        print()
+        print(f"  {title}")
+        print("         " + "".join(f"{d:>7.2f}" for d in am_depths))
+        for b in betas:
+            cells = [r for r in rows if r["beta"] == b]
+            cells = sorted(cells, key=lambda z: z["am_depth"])
+            line = f"  {b:>6.2f}  "
+            for c in cells:
+                line += f"   {_snr_char(c[metric_key])}   "
+            print(line)
+
+    _print_heatmap("am_snr_db", "AM SNR (rows=beta, cols=am_depth)")
+    _print_heatmap("fm_snr_db", "FM SNR (rows=beta, cols=am_depth)")
+
+    # --- Numeric table (compact) ---
+    print()
+    print(f"  AM SNR table (dB)")
+    print(f"  {'beta':>6}  " + "  ".join(f"{d:>6.2f}" for d in am_depths))
+    print(f"  {'-'*6}  " + "  ".join(f"{'-'*6}" for _ in am_depths))
+    for b in betas:
+        cells = sorted([r for r in rows if r["beta"] == b],
+                       key=lambda z: z["am_depth"])
+        print(f"  {b:>6.2f}  " +
+              "  ".join(f"{c['am_snr_db']:>6.1f}" for c in cells))
+
+    # --- Cliff analysis: where does AM SNR drop below 20 dB? ---
+    print()
+    print("  Cliff boundary (first beta where AM SNR < 20 dB per am_depth):")
+    for d in am_depths:
+        cells = sorted([r for r in rows if r["am_depth"] == d],
+                       key=lambda z: z["beta"])
+        cliff_beta = None
+        for c in cells:
+            if c["am_snr_db"] < 20:
+                cliff_beta = c["beta"]
+                break
+        label = f"beta={cliff_beta:.2f}" if cliff_beta is not None else "no cliff"
+        print(f"    am_depth={d:.2f}: {label}")
+
+    # --- Matplotlib PNG if available ---
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+
+        fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+
+        for ax, key, title in [
+            (axes[0], "am_snr_db", "AM decomposition SNR (dB)"),
+            (axes[1], "fm_snr_db", "FM decomposition SNR (dB)"),
+        ]:
+            grid = np.zeros((len(betas), len(am_depths)))
+            for i, b in enumerate(betas):
+                for j, d in enumerate(am_depths):
+                    cell = next(r for r in rows
+                                if r["beta"] == b and r["am_depth"] == d)
+                    grid[i, j] = cell[key]
+            im = ax.imshow(grid, aspect="auto", origin="lower",
+                           cmap="viridis",
+                           extent=[min(am_depths), max(am_depths),
+                                   min(betas), max(betas)])
+            ax.set_xlabel("am_depth")
+            ax.set_ylabel("beta (FM modulation index)")
+            ax.set_title(title)
+            fig.colorbar(im, ax=ax)
+
+        fig.tight_layout()
+        png = out_dir / "bedrosian_2d.png"
+        fig.savefig(png, dpi=120, bbox_inches="tight")
+        plt.close(fig)
+        print(f"\n  Wrote {png}")
+    except Exception as e:
+        print(f"\n  (matplotlib unavailable: {e})")
+
+    return {"bedrosian_2d": rows, "out_file": str(out_file)}
+
+
+def _speech_like_signal(fs, duration, am_freq, am_depth, f0, formants, seed=42):
+    """Synthetic speech-like signal: pitch harmonics shaped by formants,
+    modulated by a syllabic envelope. Returns (x, env_true, carrier_env)."""
+    from scipy.signal import hilbert
+    rng = np.random.default_rng(seed)
+    n = int(duration * fs)
+    t = np.arange(n) / fs
+
+    # Syllabic envelope
+    env = 1.0 + am_depth * np.cos(2 * np.pi * am_freq * t)
+
+    # Slow pitch contour (2% vibrato like natural speech)
+    f0_t = f0 * (1.0 + 0.02 * np.sin(2 * np.pi * 0.5 * t))
+    phase_fund = 2 * np.pi * np.cumsum(f0_t) / fs
+
+    # Harmonic carrier with formant-shaped amplitude
+    carrier = np.zeros(n, dtype=np.float64)
+    for h in range(1, 60):
+        fh = h * f0
+        if fh > fs / 2 - 500:
+            break
+        # Lorentzian sum over formants
+        amp = 0.0
+        for fc, bw in formants:
+            amp += (bw ** 2) / (bw ** 2 + (fh - fc) ** 2)
+        carrier += amp * np.cos(h * phase_fund + rng.uniform(0, 2 * np.pi))
+
+    carrier /= (np.abs(carrier).max() + 1e-12)
+
+    # Theoretical composite envelope: |hilbert(carrier)| (Bedrosian element-wise)
+    carrier_env = np.abs(hilbert(carrier))
+
+    x = env * carrier
+    return x.astype(np.float32), env, carrier_env
+
+
+def run_speech_like_sweep(cfg: Config, out_dir: Path):
+    """Speech-like AM sweep + STFT envelope comparison.
+    AM_env is now LPF'd on both sides for fair comparison at syllable rates."""
+    from scipy.signal import hilbert
+
+    fs = cfg.fs
+    duration = cfg.duration_s
+    f0 = float(cfg.get("speech_like", "f0_hz", default=120.0))
+    am_depth = float(cfg.get("speech_like", "am_depth", default=0.5))
+    formants = cfg.get("speech_like", "formants",
+                       default=[[700, 100], [1220, 120], [2600, 150]])
+    formants = tuple((float(f), float(b)) for f, b in formants)
+    am_freqs = cfg.get("speech_like", "am_freq_hz",
+                       default=[1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 700])
+    lpf_hz = float(cfg.get("speech_like", "lpf_hz", default=30.0))
+    stft_nfft = int(cfg.get("speech_like", "stft_n_fft", default=512))
+    stft_hop = int(cfg.get("speech_like", "stft_hop", default=128))
+
+    n = int(duration * fs)
+    edge = int(0.10 * n)
+
+    def _pow_snr(ref, est):
+        ref = ref - np.mean(ref)
+        est = est - np.mean(est)
+        r = np.sqrt(np.mean(ref ** 2)) + 1e-20
+        e = np.sqrt(np.mean((est - ref) ** 2)) + 1e-20
+        return 20 * np.log10(r / e)
+
+    print(f"  Speech-like AM sweep: f0={f0} am_depth={am_depth} "
+          f"LPF={lpf_hz} Hz, STFT n_fft={stft_nfft} hop={stft_hop}")
+
+    rows = []
+    for am_freq in am_freqs:
+        x, env_true, carrier_env = _speech_like_signal(
+            fs, duration, float(am_freq), am_depth, f0, formants, seed=42
+        )
+
+        # ADAPTIVE LPF: at least am_freq * 1.5, but no more than 500 Hz.
+        # This allows high-rate modulations to be tracked.
+        lpf_eff = min(max(lpf_hz, am_freq * 1.5), 500.0)
+
+        # AM/FM: LPF(|hilbert(x)|)
+        am_hil = np.abs(hilbert(x))
+        am_hil_lp = _lpf(am_hil, fs, lpf_eff)
+
+        # STFT (long window): 32 ms window -> ~16 Hz envelope bandwidth
+        stft_env = _stft_envelope(x, fs, stft_nfft, stft_hop)
+        stft_env_lp = _lpf(stft_env, fs, lpf_eff)
+
+        # STFT (short window): 8 ms window -> ~62 Hz envelope bandwidth
+        stft_env_short = _stft_envelope_short(x, fs)
+        stft_env_short_lp = _lpf(stft_env_short, fs, lpf_eff)
+
+        # Theoretical envelope (raw composite)
+        am_theory_raw = env_true * carrier_env
+
+        # LPF'd true syllabic envelope (fair comparison at speech rates)
+        env_true_lp = _lpf(env_true, fs, lpf_eff)
+
+        # Metrics: use SI-SDR (scale-invariant) to normalize the carrier
+        # envelope mean that scaled |hilbert(x)| and STFT frame RMS
+        am_vs_theory = _si_sdr(am_theory_raw[edge:n - edge], am_hil[edge:n - edge])
+        am_env_lp = _si_sdr(env_true_lp[edge:n - edge], am_hil_lp[edge:n - edge])
+        stft_env_lp_snr = _si_sdr(env_true_lp[edge:n - edge], stft_env_lp[edge:n - edge])
+        stft_env_short_snr = _si_sdr(env_true_lp[edge:n - edge], stft_env_short_lp[edge:n - edge])
+        stft_env_raw = _si_sdr(am_theory_raw[edge:n - edge], stft_env[edge:n - edge])
+
+        rows.append({
+            "am_freq_hz": float(am_freq),
+            "am_vs_theory_db": float(am_vs_theory),
+            "am_env_lp_db": float(am_env_lp),
+            "stft_env_lp_db": float(stft_env_lp_snr),
+            "stft_env_short_db": float(stft_env_short_snr),
+            "lpf_eff_hz": float(lpf_eff),
+            "stft_vs_theory_db": float(stft_env_raw),
+            "note": (
+                "lpf-limited" if am_freq > lpf_hz else "in-band"
+            ),
+        })
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_file = out_dir / f"speech_like_{int(time.time())}.json"
+    out_file.write_text(json.dumps(rows, indent=2))
+    print(f"  Wrote {out_file}")
+
+    print()
+    print(f"  {'am_freq':>8}  {'LPF':>5}  {'AM_Thy':>7}  {'AM_env':>7}  "
+          f"{'STFT_lng':>8}  {'STFT_sht':>8}")
+    print(f"  {'-'*8}  {'-'*5}  {'-'*7}  {'-'*7}  {'-'*8}  {'-'*8}")
+    for r in rows:
+        print(f"  {r['am_freq_hz']:>8.1f}  {r['lpf_eff_hz']:>5.0f}  "
+              f"{r['am_vs_theory_db']:>6.1f}dB  {r['am_env_lp_db']:>6.1f}dB  "
+              f"{r['stft_env_lp_db']:>7.1f}dB  {r['stft_env_short_db']:>7.1f}dB")
+
+    # Speech-rate comparison
+    speech = [r for r in rows if r["am_freq_hz"] <= 16]
+    if speech:
+        am_mean = np.mean([r['am_env_lp_db'] for r in speech])
+        stft_mean = np.mean([r['stft_env_lp_db'] for r in speech])
+        stft_short = np.mean([r['stft_env_short_db'] for r in speech])
+        print()
+        print(f"  Speech-rate (am_freq <= 16 Hz) mean, SI-SDR:")
+        print(f"    AM_env:        {am_mean:+6.1f} dB")
+        print(f"    STFT (long):   {stft_mean:+6.1f} dB")
+        print(f"    STFT (short):  {stft_short:+6.1f} dB")
+        best_stft = max(stft_mean, stft_short)
+        if am_mean > best_stft + 2:
+            print(f"    → AM/FM beats best STFT by {am_mean - best_stft:.1f} dB")
+        elif best_stft > am_mean + 2:
+            print(f"    → STFT beats AM/FM by {best_stft - am_mean:.1f} dB")
+        else:
+            print(f"    → Tie (within 2 dB) — envelope estimation is representation-agnostic")
+
+    # Note the lpf-limited regime
+    above_lpf = [r for r in rows if r["am_freq_hz"] > lpf_hz]
+    if above_lpf:
+        print()
+        print(f"  Above LPF cutoff ({lpf_hz:.0f} Hz): "
+              f"{len(above_lpf)} points filtered out by design")
+        print("  (raises LPF cutoff in config to test higher rates)")
+
+    # PNG if available
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        fig, ax = plt.subplots(figsize=(9, 5))
+        freqs = [r["am_freq_hz"] for r in rows]
+        ax.semilogx(freqs, [r["am_vs_theory_db"] for r in rows],
+                    "o-", label="AM vs theory")
+        ax.semilogx(freqs, [r["am_env_lp_db"] for r in rows],
+                    "s-", label=f"AM vs env (LPF {lpf_hz:.0f} Hz)")
+        ax.semilogx(freqs, [r["stft_env_lp_db"] for r in rows],
+                    "^-", label=f"STFT vs env (LPF {lpf_hz:.0f} Hz)")
+        ax.axvline(f0, color="red", linestyle="--", alpha=0.5,
+                   label=f"f0 ({f0:.0f} Hz)")
+        ax.axvline(lpf_hz, color="gray", linestyle=":", alpha=0.5,
+                   label=f"LPF cutoff ({lpf_hz:.0f} Hz)")
+        ax.set_xlabel("Syllabic envelope frequency (Hz)")
+        ax.set_ylabel("AM SNR (dB)")
+        ax.set_title("Speech-like: AM/FM vs STFT envelope recovery")
+        ax.grid(True, alpha=0.3)
+        ax.legend()
+        png = out_dir / "speech_like_sweep.png"
+        fig.savefig(png, dpi=120, bbox_inches="tight")
+        plt.close(fig)
+        print(f"\n  Wrote {png}")
+    except Exception as e:
+        print(f"\n  (matplotlib unavailable: {e})")
+
+    return {"speech_like": rows, "out_file": str(out_file)}
+
+
+
+def _lpf(sig, fs, cutoff_hz=30.0, order=4):
+    """Low-pass filter for envelope follower."""
+    from scipy.signal import butter, sosfiltfilt
+    nyq = fs / 2.0
+    if cutoff_hz >= nyq * 0.95:
+        return sig
+    sos = butter(order, cutoff_hz / nyq, btype="low", output="sos")
+    return sosfiltfilt(sos, sig)
+
+
+def _si_sdr(ref, est):
+    """Scale-invariant SDR in dB (like the standard metric)."""
+    ref = ref - np.mean(ref)
+    est = est - np.mean(est)
+    alpha = np.dot(est, ref) / (np.dot(ref, ref) + 1e-20)
+    target = alpha * ref
+    noise = est - target
+    return 10 * np.log10((np.sum(target ** 2) + 1e-20) /
+                         (np.sum(noise ** 2) + 1e-20))
+
+
+def _stft_envelope(x, fs, n_fft=512, hop=128):
+    """STFT frame RMS, interpolated back to audio rate."""
+    from scipy.signal import stft as sp_stft
+    noverlap = n_fft - hop
+    _, _, Z = sp_stft(x, fs=fs, nperseg=n_fft, noverlap=noverlap,
+                      boundary="zeros", padded=True)
+    frame_rms = np.sqrt(np.sum(np.abs(Z) ** 2, axis=0))
+    frame_times = np.arange(len(frame_rms)) * hop / fs
+    audio_times = np.arange(len(x)) / fs
+    env = np.interp(audio_times, frame_times, frame_rms,
+                    left=float(frame_rms[0]), right=float(frame_rms[-1]))
+    return env
+
+
+def _stft_envelope_short(x, fs, n_fft=128, hop=32):
+    """Short-window STFT frame RMS: 8 ms window -> ~62 Hz envelope bandwidth.
+    Fair comparison against AM/FM with LPF up to 60 Hz."""
+    from scipy.signal import stft as sp_stft
+    noverlap = n_fft - hop
+    _, _, Z = sp_stft(x, fs=fs, nperseg=n_fft, noverlap=noverlap,
+                      boundary="zeros", padded=True)
+    frame_rms = np.sqrt(np.sum(np.abs(Z) ** 2, axis=0))
+    frame_times = np.arange(len(frame_rms)) * hop / fs
+    audio_times = np.arange(len(x)) / fs
+    return np.interp(audio_times, frame_times, frame_rms,
+                     left=float(frame_rms[0]), right=float(frame_rms[-1]))
+
+
+def _stft_fm(x, fs, carrier_hz, n_fft=512, hop=128):
+    """Extract FM from STFT phase at peak bin near carrier_hz."""
+    from scipy.signal import stft as sp_stft
+    noverlap = n_fft - hop
+    freqs, _, Z = sp_stft(x, fs=fs, nperseg=n_fft, noverlap=noverlap,
+                          boundary="zeros", padded=True)
+    bin_idx = int(np.argmin(np.abs(freqs - carrier_hz)))
+    phase = np.unwrap(np.angle(Z[bin_idx, :]))
+    hop_s = hop / fs
+    fm_frames = np.gradient(phase) / (2 * np.pi * hop_s)
+    frame_times = np.arange(len(fm_frames)) * hop_s
+    audio_times = np.arange(len(x)) / fs
+    fm = np.interp(audio_times, frame_times, fm_frames,
+                   left=float(fm_frames[0]), right=float(fm_frames[-1]))
+    return fm
+
+
+def run_fm_sweep(cfg: Config, out_dir: Path):
+    """FM sweep: sweep pitch vibrato rate, compare AM/FM phase-derivative FM
+    to theoretical FM. Compare to STFT phase-derivative FM."""
+    from scipy.signal import hilbert
+
+    fs = cfg.fs
+    duration = cfg.duration_s
+    f0 = float(cfg.get("fm_sweep", "f0_hz", default=1000.0))
+    fm_depth = float(cfg.get("fm_sweep", "fm_depth_hz", default=50.0))
+    am_freq = float(cfg.get("fm_sweep", "am_freq_hz", default=2.0))
+    am_depth = float(cfg.get("fm_sweep", "am_depth", default=0.2))
+    fm_freqs = cfg.get("fm_sweep", "fm_freq_hz",
+                       default=[0.5, 1, 2, 4, 8, 16, 32, 64, 128, 200])
+    stft_nfft = int(cfg.get("fm_sweep", "stft_n_fft", default=512))
+    stft_hop = int(cfg.get("fm_sweep", "stft_hop", default=128))
+
+    n = int(duration * fs)
+    t = np.arange(n) / fs
+    edge = int(0.10 * n)
+
+    def _pow_snr(ref, est):
+        ref = ref - np.mean(ref)
+        est = est - np.mean(est)
+        r = np.sqrt(np.mean(ref ** 2)) + 1e-20
+        e = np.sqrt(np.mean((est - ref) ** 2)) + 1e-20
+        return 20 * np.log10(r / e)
+
+    print(f"  FM sweep: f0={f0} Hz, fm_depth={fm_depth} Hz, "
+          f"STFT n_fft={stft_nfft} hop={stft_hop}")
+
+    rows = []
+    for fm_freq in fm_freqs:
+        # Signal: env * cos(2π f0 t + (fm_depth/fm_freq) sin(2π fm_freq t))
+        env = 1.0 + am_depth * np.cos(2 * np.pi * am_freq * t)
+        phase = 2 * np.pi * f0 * t + (fm_depth / fm_freq) * np.sin(
+            2 * np.pi * fm_freq * t)
+        x = (env * np.cos(phase)).astype(np.float32)
+
+        # AM/FM extraction
+        a = hilbert(x)
+        ph_hil = np.unwrap(np.angle(a))
+        fm_hil = np.gradient(ph_hil) * fs / (2 * np.pi) - f0
+
+        # STFT extraction at multiple hops
+        fm_stft = _stft_fm(x, fs, f0, stft_nfft, stft_hop) - f0
+        fm_stft_h32 = _stft_fm(x, fs, f0, stft_nfft, 32) - f0
+        fm_stft_h256 = _stft_fm(x, fs, f0, stft_nfft, 256) - f0
+
+        # Theoretical FM (deviation from f0)
+        fm_true = fm_depth * np.cos(2 * np.pi * fm_freq * t)
+
+        # Metrics
+        am_fm_snr = _pow_snr(fm_true[edge:n - edge], fm_hil[edge:n - edge])
+        stft_fm_snr = _pow_snr(fm_true[edge:n - edge], fm_stft[edge:n - edge])
+        stft_h32_snr = _pow_snr(fm_true[edge:n - edge], fm_stft_h32[edge:n - edge])
+        stft_h256_snr = _pow_snr(fm_true[edge:n - edge], fm_stft_h256[edge:n - edge])
+
+        # STFT frame rate limit
+        stft_frame_rate = fs / stft_hop
+        stft_nyq = stft_frame_rate / 2.0
+
+        rows.append({
+            "fm_freq_hz": float(fm_freq),
+            "am_fm_snr_db": float(am_fm_snr),
+            "stft_fm_snr_db": float(stft_fm_snr),
+            "stft_h32_snr_db": float(stft_h32_snr),
+            "stft_h256_snr_db": float(stft_h256_snr),
+            "stft_nyq_hz": float(stft_nyq),
+            "above_stft_nyq": bool(fm_freq > stft_nyq),
+        })
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_file = out_dir / f"fm_sweep_{int(time.time())}.json"
+    out_file.write_text(json.dumps(rows, indent=2))
+    print(f"  Wrote {out_file}")
+
+    print()
+    print(f"  {'fm_freq':>8}  {'AM_FM':>7}  {'STFT_h32':>9}  {'STFT_h128':>10}  "
+          f"{'STFT_h256':>10}")
+    print(f"  {'-'*8}  {'-'*7}  {'-'*9}  {'-'*10}  {'-'*10}")
+    for r in rows:
+        print(f"  {r['fm_freq_hz']:>8.1f}  {r['am_fm_snr_db']:>6.1f}dB  "
+              f"{r['stft_h32_snr_db']:>8.1f}dB  "
+              f"{r['stft_fm_snr_db']:>9.1f}dB  "
+              f"{r['stft_h256_snr_db']:>9.1f}dB")
+
+    # Summary
+    low = [r for r in rows if r["fm_freq_hz"] <= 16]
+    high = [r for r in rows if r["fm_freq_hz"] >= 64]
+    if low and high:
+        print()
+        print(f"  Vibrato-rate (<=16 Hz):")
+        print(f"    AM/FM FM SNR: {np.mean([r['am_fm_snr_db'] for r in low]):+6.1f} dB")
+        print(f"    STFT FM SNR : {np.mean([r['stft_fm_snr_db'] for r in low]):+6.1f} dB")
+        print(f"  Fast-rate (>=64 Hz):")
+        print(f"    AM/FM FM SNR: {np.mean([r['am_fm_snr_db'] for r in high]):+6.1f} dB")
+        print(f"    STFT FM SNR : {np.mean([r['stft_fm_snr_db'] for r in high]):+6.1f} dB")
+
+    # PNG
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        fig, ax = plt.subplots(figsize=(9, 5))
+        freqs = [r["fm_freq_hz"] for r in rows]
+        ax.semilogx(freqs, [r["am_fm_snr_db"] for r in rows],
+                    "o-", label="AM/FM phase derivative")
+        ax.semilogx(freqs, [r["stft_fm_snr_db"] for r in rows],
+                    "s-", label="STFT phase derivative")
+        stft_nyq = rows[0]["stft_nyq_hz"]
+        ax.axvline(stft_nyq, color="red", linestyle="--", alpha=0.5,
+                   label=f"STFT Nyquist ({stft_nyq:.0f} Hz)")
+        ax.set_xlabel("FM rate (Hz)")
+        ax.set_ylabel("FM estimation SNR (dB)")
+        ax.set_title("FM extraction: AM/FM vs STFT")
+        ax.grid(True, alpha=0.3)
+        ax.legend()
+        png = out_dir / "fm_sweep.png"
+        fig.savefig(png, dpi=120, bbox_inches="tight")
+        plt.close(fig)
+        print(f"\n  Wrote {png}")
+    except Exception as e:
+        print(f"\n  (matplotlib unavailable: {e})")
+
+    return {"fm_sweep": rows, "out_file": str(out_file)}
+
+
+=======================================================================
+FILE: modulab/metrics/__init__.py
+=======================================================================
+from .quality import snr_db, si_sdr_db, mcd_db
+from .cost import wall_time_ms
+
+REGISTRY = {"snr_db": snr_db, "si_sdr_db": si_sdr_db, "mcd_db": mcd_db}
+
+
+=======================================================================
+FILE: modulab/metrics/cost.py
+=======================================================================
+from __future__ import annotations
+import time
+import tracemalloc
+from typing import Callable, Any
+
+
+def wall_time_ms(fn: Callable[[], Any]):
+    tracemalloc.start()
+    t0 = time.perf_counter_ns()
+    result = fn()
+    t1 = time.perf_counter_ns()
+    _, peak = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
+    return result, (t1 - t0) / 1e6, peak / 1e6
+
+
+=======================================================================
+FILE: modulab/metrics/quality.py
+=======================================================================
+from __future__ import annotations
+import numpy as np
+from scipy.signal import stft as sp_stft
+from scipy.fftpack import dct
+
+
+def snr_db(x_ref, x_out):
+    x_ref = np.asarray(x_ref, dtype=np.float64)
+    x_out = np.asarray(x_out, dtype=np.float64)
+    n = min(len(x_ref), len(x_out))
+    x_ref, x_out = x_ref[:n], x_out[:n]
+    noise = x_ref - x_out
+    return float(10 * np.log10((np.sum(x_ref ** 2) + 1e-20) / (np.sum(noise ** 2) + 1e-20)))
+
+
+def si_sdr_db(x_ref, x_out):
+    x_ref = np.asarray(x_ref, dtype=np.float64)
+    x_out = np.asarray(x_out, dtype=np.float64)
+    n = min(len(x_ref), len(x_out))
+    x_ref, x_out = x_ref[:n], x_out[:n]
+    x_ref = x_ref - x_ref.mean()
+    x_out = x_out - x_out.mean()
+    a = np.dot(x_out, x_ref) / (np.dot(x_ref, x_ref) + 1e-20)
+    tgt = a * x_ref
+    noise = x_out - tgt
+    return float(10 * np.log10((np.sum(tgt ** 2) + 1e-20) / (np.sum(noise ** 2) + 1e-20)))
+
+
+def _hz_to_mel(f):
+    return 2595.0 * np.log10(1.0 + f / 700.0)
+
+
+def _mel_to_hz(m):
+    return 700.0 * (10 ** (m / 2595.0) - 1.0)
+
+
+def _mel_filterbank(fs, n_fft, n_mels=26, f_min=0.0, f_max=None):
+    if f_max is None:
+        f_max = fs / 2.0
+    mels = np.linspace(_hz_to_mel(f_min), _hz_to_mel(f_max), n_mels + 2)
+    hz = _mel_to_hz(mels)
+    freqs = np.linspace(0, fs / 2.0, n_fft // 2 + 1)
+    fb = np.zeros((n_mels, len(freqs)))
+    for i in range(n_mels):
+        lo, ctr, hi = hz[i], hz[i + 1], hz[i + 2]
+        for j, f in enumerate(freqs):
+            if lo <= f <= ctr:
+                fb[i, j] = (f - lo) / (ctr - lo + 1e-12)
+            elif ctr < f <= hi:
+                fb[i, j] = (hi - f) / (hi - ctr + 1e-12)
+    return fb
+
+
+def _mfcc(x, fs, n_mfcc=13, n_mels=26, n_fft=512):
+    _, _, Z = sp_stft(x.astype(np.float64), fs=fs, nperseg=n_fft)
+    mag = np.abs(Z)
+    fb = _mel_filterbank(fs, n_fft, n_mels)
+    mel = fb @ mag
+    log_mel = np.log(mel + 1e-10)
+    return dct(log_mel, type=2, axis=0, norm="ortho")[:n_mfcc]
+
+
+def mcd_db(x_ref, x_out, fs=16000, n_mfcc=13):
+    try:
+        n = min(len(x_ref), len(x_out))
+        m1 = _mfcc(np.asarray(x_ref[:n], dtype=np.float32), fs, n_mfcc)
+        m2 = _mfcc(np.asarray(x_out[:n], dtype=np.float32), fs, n_mfcc)
+        diff = m1[1:] - m2[1:]
+        return float(np.mean(np.sqrt(np.sum(diff ** 2, axis=0))) * (10.0 / np.log(10)) * np.sqrt(2.0))
+    except Exception:
+        return float("nan")
+
+
+=======================================================================
+FILE: modulab/operators/__init__.py
+=======================================================================
+from .base import Operator
+from .passthrough import Passthrough
+from .noise_gate import NoiseGate
+
+REGISTRY = {"passthrough": Passthrough, "noise_gate": NoiseGate}
+
+
+def build(name):
+    if name == "passthrough":
+        return Passthrough()
+    if name == "noise_gate":
+        return NoiseGate(threshold_db=-40.0)
+    raise ValueError(f"Unknown operator: {name}")
+
+
+=======================================================================
+FILE: modulab/operators/base.py
+=======================================================================
+from __future__ import annotations
+from abc import ABC, abstractmethod
+
+
+class Operator(ABC):
+    name = "base"
+
+    @abstractmethod
+    def apply(self, enc): ...
+
+    @abstractmethod
+    def compatible(self, repr_name: str) -> bool: ...
+
+    def info(self):
+        return {"name": self.name}
+
+
+=======================================================================
+FILE: modulab/operators/noise_gate.py
+=======================================================================
+import numpy as np
+
+from modulab.operators.base import Operator
+from modulab.representations.base import Encoding
+
+
+class NoiseGate(Operator):
+    name = "noise_gate"
+
+    def __init__(self, threshold_db=-40.0):
+        self.threshold_db = threshold_db
+        self.threshold_linear = 10 ** (threshold_db / 20.0)
+
+    def apply(self, enc):
+        if "am" in enc.data:
+            am = enc.data["am"].copy()
+            am[am < self.threshold_linear * am.max()] = 0.0
+            return Encoding(data={**enc.data, "am": am}, meta=dict(enc.meta))
+        if "mag" in enc.data:
+            mag = enc.data["mag"].copy()
+            mag[mag < self.threshold_linear * mag.max()] = 0.0
+            return Encoding(data={**enc.data, "mag": mag}, meta=dict(enc.meta))
+        return enc
+
+    def compatible(self, repr_name):
+        return repr_name in {"stft", "filterbank_amfm"}
+
+
+=======================================================================
+FILE: modulab/operators/passthrough.py
+=======================================================================
+from modulab.operators.base import Operator
+
+
+class Passthrough(Operator):
+    name = "passthrough"
+
+    def apply(self, enc):
+        return enc
+
+    def compatible(self, repr_name):
+        return True
+
+
+=======================================================================
+FILE: modulab/representations/__init__.py
+=======================================================================
+from .base import Representation, Encoding
+from .stft import STFTRepresentation
+from .filterbank_amfm import FilterbankAMFM
+from .parallel import ParallelRepresentation
+
+REGISTRY = {
+    "stft": STFTRepresentation,
+    "filterbank_amfm": FilterbankAMFM,
+    "parallel": ParallelRepresentation,
+}
+
+
+def build(name, cfg):
+    sub = cfg.get("representations", name, default={}) or {}
+    if name == "stft":
+        return STFTRepresentation(n_fft=sub.get("n_fft", 512),
+                                  hop_length=sub.get("hop_length", 128),
+                                  window=sub.get("window", "hann"))
+    if name == "filterbank_amfm":
+        return FilterbankAMFM(num_bands=sub.get("num_bands", 24),
+                              f_min=sub.get("f_min_hz", 100),
+                              f_max=sub.get("f_max_hz", 7000),
+                              order=sub.get("filter_order", 4),
+                              spacing=sub.get("spacing", "erb"))
+    if name == "parallel":
+        branches = sub.get("branches", ["filterbank_amfm", "stft"])
+        return ParallelRepresentation(
+            sub_reps=[build(b, cfg) for b in branches],
+            fusion=sub.get("fusion", "average"),
+            weights=sub.get("weights"),
+            crossover_hz=sub.get("crossover_hz", 1500.0),
+            low_from=sub.get("low_from", 0),
+            high_from=sub.get("high_from", 1),
+        )
+    raise ValueError(f"Unknown representation: {name}")
+
+
+=======================================================================
+FILE: modulab/representations/base.py
+=======================================================================
+from __future__ import annotations
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from typing import Any
+
+import numpy as np
+
+
+@dataclass
+class Encoding:
+    data: dict[str, Any]
+    meta: dict[str, Any]
+
+
+class Representation(ABC):
+    name: str = "base"
+
+    @abstractmethod
+    def encode(self, x: np.ndarray, fs: int) -> Encoding: ...
+
+    @abstractmethod
+    def decode(self, enc: Encoding) -> np.ndarray: ...
+
+    @abstractmethod
+    def quantize(self, enc: Encoding, bits: int) -> Encoding: ...
+
+    @abstractmethod
+    def flops_encode(self, n_samples: int) -> int: ...
+
+    @abstractmethod
+    def flops_decode(self, n_samples: int) -> int: ...
+
+    def apply_operator(self, enc: Encoding, op) -> Encoding:
+        return op.apply(enc)
+
+    def info(self) -> dict[str, Any]:
+        return {"name": self.name}
+
+
+=======================================================================
+FILE: modulab/representations/filterbank_amfm.py
+=======================================================================
+from __future__ import annotations
+import numpy as np
+from scipy.signal import butter, sosfiltfilt, hilbert
+
+from .base import Representation, Encoding
+
+
+def erb_edges(num_bands, f_min, f_max):
+    erb_min = 21.4 * np.log10(1 + 0.00437 * f_min)
+    erb_max = 21.4 * np.log10(1 + 0.00437 * f_max)
+    pts = np.linspace(erb_min, erb_max, num_bands)
+    centers = (10 ** (pts / 21.4) - 1) / 0.00437
+    edges = np.zeros(num_bands + 1)
+    edges[0] = f_min
+    edges[-1] = f_max
+    for k in range(1, num_bands):
+        edges[k] = np.sqrt(centers[k - 1] * centers[k])
+    return edges, centers
+
+
+class FilterbankAMFM(Representation):
+    name = "filterbank_amfm"
+
+    def __init__(self, num_bands=24, f_min=100.0, f_max=7000.0, order=4, spacing="erb"):
+        self.num_bands = num_bands
+        self.f_min = f_min
+        self.f_max = f_max
+        self.order = order
+        self.spacing = spacing
+
+    def encode(self, x, fs):
+        edges, centers = erb_edges(self.num_bands, self.f_min, self.f_max)
+        nyq = fs / 2.0
+        n = len(x)
+        am = np.zeros((self.num_bands, n), dtype=np.float32)
+        fm = np.zeros((self.num_bands, n), dtype=np.float32)
+        phase0 = np.zeros(self.num_bands, dtype=np.float32)
+
+        for k in range(self.num_bands):
+            lo = edges[k] / nyq
+            hi = min(edges[k + 1] / nyq, 0.999)
+            if hi <= lo:
+                continue
+            sos = butter(self.order, [lo, hi], btype="band", output="sos")
+            xk = sosfiltfilt(sos, x)
+            analytic = hilbert(xk)
+            am[k] = np.abs(analytic).astype(np.float32)
+            phase = np.unwrap(np.angle(analytic))
+            carrier = 2 * np.pi * centers[k] * np.arange(n) / fs
+            residual = phase - carrier
+            # CRITICAL: preserve initial phase per band before zeroing.
+            phase0[k] = float(residual[0])
+            residual = residual - residual[0]
+            # First-difference with leading zero -> cumsum exactly inverts.
+            fm_k = np.zeros(n, dtype=np.float32)
+            fm_k[1:] = (np.diff(residual) * fs / (2 * np.pi)).astype(np.float32)
+            fm[k] = fm_k
+
+        return Encoding(
+            data={"am": am, "fm": fm, "phase0": phase0,
+                  "centers": centers, "edges": edges},
+            meta={"n_samples": n, "fs": fs, "num_bands": self.num_bands},
+        )
+
+    def decode(self, enc):
+        am = enc.data["am"]
+        fm = enc.data["fm"]
+        phase0 = enc.data["phase0"]
+        centers = enc.data["centers"]
+        fs = enc.meta["fs"]
+        n = enc.meta["n_samples"]
+        t = np.arange(n) / fs
+        y = np.zeros(n, dtype=np.float64)
+        for k, fc in enumerate(centers):
+            carrier = 2 * np.pi * fc * t
+            rec_residual = 2 * np.pi * np.cumsum(fm[k].astype(np.float64)) / fs
+            phase = phase0[k] + carrier + rec_residual
+            y += am[k] * np.cos(phase)
+        return y.astype(np.float32)
+
+    def quantize(self, enc, bits):
+        am = enc.data["am"].copy()
+        fm = enc.data["fm"].copy()
+        am_max = float(am.max()) + 1e-12
+        am_lv = 2 ** bits - 1
+        am_q = np.round(am / am_max * am_lv) / am_lv * am_max
+        fm_max = float(np.abs(fm).max()) + 1e-12
+        fm_lv = 2 ** (bits - 1) - 1
+        fm_q = np.round(fm / fm_max * fm_lv) / fm_lv * fm_max
+        return Encoding(
+            data={"am": am_q.astype(np.float32), "fm": fm_q.astype(np.float32),
+                  "phase0": enc.data["phase0"],
+                  "centers": enc.data["centers"], "edges": enc.data["edges"]},
+            meta=dict(enc.meta),
+        )
+
+    def flops_encode(self, n_samples):
+        fft = 5 * n_samples * int(np.log2(max(n_samples, 2)))
+        iir = 20 * n_samples
+        return self.num_bands * (fft + iir)
+
+    def flops_decode(self, n_samples):
+        return self.num_bands * 4 * n_samples
+
+    def info(self):
+        edges, centers = erb_edges(self.num_bands, self.f_min, self.f_max)
+        ratios = np.diff(edges) / centers
+        return {
+            "name": self.name, "num_bands": self.num_bands,
+            "f_min_hz": self.f_min, "f_max_hz": self.f_max,
+            "filter_order": self.order,
+            "bw_fc_ratio_min": float(ratios.min()),
+            "bw_fc_ratio_max": float(ratios.max()),
+            "bw_fc_ratio_median": float(np.median(ratios)),
+        }
+
+
+=======================================================================
+FILE: modulab/representations/parallel.py
+=======================================================================
+from __future__ import annotations
+import numpy as np
+
+from .base import Representation, Encoding
+
+
+class ParallelRepresentation(Representation):
+    name = "parallel"
+
+    def __init__(self, sub_reps, fusion="average", weights=None,
+                 crossover_hz=1500.0, low_from=0, high_from=1):
+        if fusion not in ("average", "crossover"):
+            raise ValueError(f"Unknown fusion: {fusion}")
+        self.sub_reps = sub_reps
+        self.fusion = fusion
+        self.weights = weights or [1.0 / len(sub_reps)] * len(sub_reps)
+        self.crossover_hz = crossover_hz
+        self.low_from = low_from
+        self.high_from = high_from
+
+    def encode(self, x, fs):
+        branch_encs = [r.encode(x, fs) for r in self.sub_reps]
+        return Encoding(
+            data={"branches": branch_encs},
+            meta={"n_samples": len(x), "fs": fs,
+                  "branch_names": [r.name for r in self.sub_reps]},
+        )
+
+    def decode(self, enc):
+        fs = enc.meta["fs"]
+        n = enc.meta["n_samples"]
+        ys = [np.asarray(r.decode(e)[:n], dtype=np.float64)
+              for r, e in zip(self.sub_reps, enc.data["branches"])]
+        if self.fusion == "average":
+            out = sum(w * y for w, y in zip(self.weights, ys))
+            return out.astype(np.float32)
+        Ys = [np.fft.rfft(y, n=n) for y in ys]
+        freqs = np.fft.rfftfreq(n, 1.0 / fs)
+        mask_low = freqs < self.crossover_hz
+        Y = np.zeros_like(Ys[0])
+        Y[mask_low] = Ys[self.low_from][mask_low]
+        Y[~mask_low] = Ys[self.high_from][~mask_low]
+        return np.fft.irfft(Y, n=n).astype(np.float32)
+
+    def quantize(self, enc, bits):
+        branch_encs = [r.quantize(e, bits)
+                       for r, e in zip(self.sub_reps, enc.data["branches"])]
+        return Encoding(data={"branches": branch_encs}, meta=dict(enc.meta))
+
+    def apply_operator(self, enc, op):
+        out = []
+        for r, e in zip(self.sub_reps, enc.data["branches"]):
+            out.append(op.apply(e) if op.compatible(r.name) else e)
+        return Encoding(data={"branches": out}, meta=dict(enc.meta))
+
+    def flops_encode(self, n_samples):
+        return sum(r.flops_encode(n_samples) for r in self.sub_reps)
+
+    def flops_decode(self, n_samples):
+        sub = sum(r.flops_decode(n_samples) for r in self.sub_reps)
+        if self.fusion == "average":
+            fusion = len(self.sub_reps) * n_samples
+        else:
+            fusion = 3 * 5 * n_samples * int(np.log2(max(n_samples, 2))) + n_samples
+        return sub + fusion
+
+    def info(self):
+        return {"name": self.name, "fusion": self.fusion,
+                "weights": list(self.weights), "crossover_hz": self.crossover_hz,
+                "branches": [r.info() for r in self.sub_reps]}
+
+
+=======================================================================
+FILE: modulab/representations/stft.py
+=======================================================================
+from __future__ import annotations
+import numpy as np
+from scipy.signal import stft as sp_stft, istft as sp_istft
+
+from .base import Representation, Encoding
+
+
+class STFTRepresentation(Representation):
+    name = "stft"
+
+    def __init__(self, n_fft: int = 512, hop_length: int = 128, window: str = "hann"):
+        self.n_fft = n_fft
+        self.hop = hop_length
+        self.window = window
+
+    def encode(self, x: np.ndarray, fs: int) -> Encoding:
+        noverlap = self.n_fft - self.hop
+        _, _, Z = sp_stft(
+            x, fs=fs, window=self.window, nperseg=self.n_fft,
+            noverlap=noverlap, boundary="zeros", padded=True,
+        )
+        return Encoding(
+            data={"mag": np.abs(Z).astype(np.float32),
+                  "phase": np.angle(Z).astype(np.float32)},
+            meta={"n_samples": len(x), "fs": fs, "n_fft": self.n_fft, "hop": self.hop},
+        )
+
+    def decode(self, enc: Encoding) -> np.ndarray:
+        mag = enc.data["mag"]
+        phase = enc.data["phase"]
+        Z = mag * np.exp(1j * phase)
+        noverlap = self.n_fft - enc.meta["hop"]
+        _, x = sp_istft(
+            Z, fs=enc.meta["fs"], window=self.window, nperseg=self.n_fft,
+            noverlap=noverlap, input_onesided=True, boundary=True,
+        )
+        return x[: enc.meta["n_samples"]].astype(np.float32)
+
+    def quantize(self, enc: Encoding, bits: int) -> Encoding:
+        levels = 2 ** bits - 1
+        mag = enc.data["mag"]
+        phase = enc.data["phase"]
+        mag_max = float(mag.max()) + 1e-12
+        mag_q = np.round(mag / mag_max * levels) / levels * mag_max
+        phase_q = np.round((phase + np.pi) / (2 * np.pi) * levels) / levels * 2 * np.pi - np.pi
+        return Encoding(
+            data={"mag": mag_q.astype(np.float32), "phase": phase_q.astype(np.float32)},
+            meta=dict(enc.meta),
+        )
+
+    def flops_encode(self, n_samples: int) -> int:
+        n_frames = 1 + n_samples // self.hop
+        n_bins = self.n_fft // 2 + 1
+        return int(n_frames * 5 * self.n_fft * np.log2(self.n_fft) + n_frames * n_bins * 4)
+
+    def flops_decode(self, n_samples: int) -> int:
+        return self.flops_encode(n_samples)
+
+    def info(self) -> dict:
+        return {"name": self.name, "n_fft": self.n_fft, "hop_length": self.hop}
+
+
+=======================================================================
+FILE: modulab_config.yaml
+=======================================================================
+seed: 42
+audio:
+  fs: 16000
+  duration_s: 3.0
+
+representations:
+  stft:
+    n_fft: 512
+    hop_length: 128
+    window: hann
+  filterbank_amfm:
+    num_bands: 24
+    spacing: erb
+    f_min_hz: 100
+    f_max_hz: 7000
+    filter_order: 4
+  parallel:
+    branches: [filterbank_amfm, stft]
+    fusion: average
+    weights: [0.5, 0.5]
+    crossover_hz: 1500.0
+    low_from: 0
+    high_from: 1
+
+quantization:
+  bit_widths: [4, 6, 8, 12, 16]
+
+metrics:
+  quality: [snr_db, si_sdr_db, mcd_db]
+
+narrowband_sweep:
+  fc_hz: [500, 1000, 2000, 4000]
+  bw_ratios: [0.05, 0.10, 0.20, 0.30, 0.50, 1.00]
+  modulation:
+    am_freq_hz: 5.0
+    am_depth: 0.5
+    fm_freq_hz: 10.0
+    fm_depth_hz: 20.0
+
+
+=======================================================================
+FILE: modulab_config_lite.yaml
+=======================================================================
+seed: 42
+audio:
+  fs: 16000
+  duration_s: 1.5
+representations:
+  stft:
+    n_fft: 512
+    hop_length: 128
+    window: hann
+  filterbank_amfm:
+    num_bands: 8
+    spacing: erb
+    f_min_hz: 100
+    f_max_hz: 7000
+    filter_order: 4
+  parallel:
+    branches: [filterbank_amfm, stft]
+    fusion: average
+    weights: [0.5, 0.5]
+    crossover_hz: 1500.0
+    low_from: 0
+    high_from: 1
+quantization:
+  bit_widths: [8, 12, 16]
+metrics:
+  quality: [snr_db, si_sdr_db, mcd_db]
+narrowband_sweep:
+  bits: 12
+  fc_hz: [500, 1000, 2000]
+  bw_ratios: [0.10, 0.25, 0.50, 0.75, 1.00, 1.50, 2.00, 3.00]
+  modulation:
+    am_freq_hz: 5.0
+    am_depth: 0.5
+    fm_freq_hz: 10.0
+    fm_depth_ratio: 0.25
+
+bedrosian_sweep:
+  fc_hz: 1000.0
+  fm_freq_hz: 400.0
+  am_freq_hz: 400.0
+  am_depth: 0.5
+  bits: 0
+  betas: [0.05, 0.10, 0.25, 0.50, 0.75, 1.00, 1.50, 2.00, 3.00, 4.00, 6.00]
+
+bedrosian_2d:
+  fc_hz: 1000.0
+  fm_freq_hz: 400.0
+  am_freq_hz: 400.0
+  betas: [0.05, 0.25, 0.50, 0.75, 1.00, 1.50, 2.00, 3.00]
+  am_depths: [0.10, 0.30, 0.50, 0.70, 0.90]
+
+speech_like:
+  f0_hz: 120.0
+  am_depth: 0.5
+  formants: [[700, 100], [1220, 120], [2600, 150]]
+  lpf_hz: 30.0
+  stft_n_fft: 512
+  stft_hop: 128
+  am_freq_hz: [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 700]
+
+fm_sweep:
+  f0_hz: 1000.0
+  fm_depth_hz: 50.0
+  am_freq_hz: 2.0
+  am_depth: 0.2
+  fm_freq_hz: [0.5, 1, 2, 4, 8, 16, 32, 64, 128, 200]
+  stft_n_fft: 512
+  stft_hop: 128
+
+
+=======================================================================
+FILE: pyproject.toml
+=======================================================================
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "modulab"
+version = "0.2.0"
+description = "AM/FM vs STFT empirical benchmark for speech manipulation"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.11",
+    "matplotlib>=3.7",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.4", "pytest-timeout>=2.1"]
+
+[project.scripts]
+modulab = "modulab.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["modulab*"]
+
+
+=======================================================================
+FILE: results/.gitkeep
+=======================================================================
+
+
+=======================================================================
+FILE: results/bedrosian_1794605320.json
+=======================================================================
+[
+  {
+    "beta": 0.05,
+    "snr_db": 37.534814974248235,
+    "bw_over_fc": 0.054,
+    "bits": 14,
+    "fc_hz": 1000.0
+  },
+  {
+    "beta": 0.1,
+    "snr_db": 37.36365093944747,
+    "bw_over_fc": 0.056,
+    "bits": 14,
+    "fc_hz": 1000.0
+  },
+  {
+    "beta": 0.25,
+    "snr_db": 37.95788730620192,
+    "bw_over_fc": 0.062,
+    "bits": 14,
+    "fc_hz": 1000.0
+  },
+  {
+    "beta": 0.5,
+    "snr_db": 37.197318010648,
+    "bw_over_fc": 0.072,
+    "bits": 14,
+    "fc_hz": 1000.0
+  },
+  {
+    "beta": 1.0,
+    "snr_db": 37.2108112031102,
+    "bw_over_fc": 0.092,
+    "bits": 14,
+    "fc_hz": 1000.0
+  },
+  {
+    "beta": 2.0,
+    "snr_db": 37.10127704102531,
+    "bw_over_fc": 0.132,
+    "bits": 14,
+    "fc_hz": 1000.0
+  },
+  {
+    "beta": 4.0,
+    "snr_db": 37.42089877940085,
+    "bw_over_fc": 0.212,
+    "bits": 14,
+    "fc_hz": 1000.0
+  },
+  {
+    "beta": 8.0,
+    "snr_db": 36.72638788742232,
+    "bw_over_fc": 0.372,
+    "bits": 14,
+    "fc_hz": 1000.0
+  }
+]
+
+=======================================================================
+FILE: results/bedrosian_1794605585.json
+=======================================================================
+[
+  {
+    "beta": 0.05,
+    "snr_db": 37.00603333011617,
+    "bw_over_fc": 1.24,
+    "bits": 14,
+    "fc_hz": 1000.0,
+    "am_freq_hz": 400.0,
+    "fm_freq_hz": 400.0,
+    "bedrosian_ratio": 0.40816326530612246
+  },
+  {
+    "beta": 0.1,
+    "snr_db": 37.758885610340805,
+    "bw_over_fc": 1.28,
+    "bits": 14,
+    "fc_hz": 1000.0,
+    "am_freq_hz": 400.0,
+    "fm_freq_hz": 400.0,
+    "bedrosian_ratio": 0.4166666666666667
+  },
+  {
+    "beta": 0.25,
+    "snr_db": 37.353895044317376,
+    "bw_over_fc": 1.4,
+    "bits": 14,
+    "fc_hz": 1000.0,
+    "am_freq_hz": 400.0,
+    "fm_freq_hz": 400.0,
+    "bedrosian_ratio": 0.4444444444444444
+  },
+  {
+    "beta": 0.5,
+    "snr_db": 34.48542982793227,
+    "bw_over_fc": 1.6,
+    "bits": 14,
+    "fc_hz": 1000.0,
+    "am_freq_hz": 400.0,
+    "fm_freq_hz": 400.0,
+    "bedrosian_ratio": 0.5
+  },
+  {
+    "beta": 0.75,
+    "snr_db": 45.868857428999085,
+    "bw_over_fc": 1.8,
+    "bits": 14,
+    "fc_hz": 1000.0,
+    "am_freq_hz": 400.0,
+    "fm_freq_hz": 400.0,
+    "bedrosian_ratio": 0.5714285714285714
+  },
+  {
+    "beta": 1.0,
+    "snr_db": 31.480234173963186,
+    "bw_over_fc": 2.0,
+    "bits": 14,
+    "fc_hz": 1000.0,
+    "am_freq_hz": 400.0,
+    "fm_freq_hz": 400.0,
+    "bedrosian_ratio": 0.6666666666666666
+  },
+  {
+    "beta": 1.5,
+    "snr_db": 30.287605034482983,
+    "bw_over_fc": 2.4,
+    "bits": 14,
+    "fc_hz": 1000.0,
+    "am_freq_hz": 400.0,
+    "fm_freq_hz": 400.0,
+    "bedrosian_ratio": 1.0
+  },
+  {
+    "beta": 2.0,
+    "snr_db": 38.708917272034995,
+    "bw_over_fc": 2.8,
+    "bits": 14,
+    "fc_hz": 1000.0,
+    "am_freq_hz": 400.0,
+    "fm_freq_hz": 400.0,
+    "bedrosian_ratio": 2.0
+  },
+  {
+    "beta": 2.5,
+    "snr_db": 25.16954098640089,
+    "bw_over_fc": 3.2,
+    "bits": 14,
+    "fc_hz": 1000.0,
+    "am_freq_hz": 400.0,
+    "fm_freq_hz": 400.0,
+    "bedrosian_ratio": Infinity
+  },
+  {
+    "beta": 3.0,
+    "snr_db": 32.85464810521345,
+    "bw_over_fc": 3.6,
+    "bits": 14,
+    "fc_hz": 1000.0,
+    "am_freq_hz": 400.0,
+    "fm_freq_hz": 400.0,
+    "bedrosian_ratio": Infinity
+  },
+  {
+    "beta": 4.0,
+    "snr_db": 27.76139270352097,
+    "bw_over_fc": 4.4,
+    "bits": 14,
+    "fc_hz": 1000.0,
+    "am_freq_hz": 400.0,
+    "fm_freq_hz": 400.0,
+    "bedrosian_ratio": Infinity
+  }
+]
+
+=======================================================================
+FILE: results/bedrosian_1794605708.json
+=======================================================================
+[
+  {
+    "beta": 0.05,
+    "recon_snr_db": 37.22079537164451,
+    "am_snr_db": 82.9503644884102,
+    "fm_snr_db": 21.282110910361247,
+    "bedrosian_ratio": 0.6122448979591837,
+    "bits": 0
+  },
+  {
+    "beta": 0.1,
+    "recon_snr_db": 37.22058502279341,
+    "am_snr_db": 71.21877490279915,
+    "fm_snr_db": 21.815351324020426,
+    "bedrosian_ratio": 0.625,
+    "bits": 0
+  },
+  {
+    "beta": 0.25,
+    "recon_snr_db": 37.22050968808279,
+    "am_snr_db": 56.302601094340694,
+    "fm_snr_db": 21.32077052975269,
+    "bedrosian_ratio": 0.6666666666666666,
+    "bits": 0
+  },
+  {
+    "beta": 0.5,
+    "recon_snr_db": 37.22036907541127,
+    "am_snr_db": 46.240602546813705,
+    "fm_snr_db": 20.594924508851964,
+    "bedrosian_ratio": 0.75,
+    "bits": 0
+  },
+  {
+    "beta": 0.75,
+    "recon_snr_db": 37.22067889312245,
+    "am_snr_db": 41.68028208010638,
+    "fm_snr_db": 20.517040791551068,
+    "bedrosian_ratio": 0.8571428571428571,
+    "bits": 0
+  },
+  {
+    "beta": 1.0,
+    "recon_snr_db": 37.22069858909682,
+    "am_snr_db": 39.971908331330575,
+    "fm_snr_db": 21.013026058058806,
+    "bedrosian_ratio": 1.0,
+    "bits": 0
+  },
+  {
+    "beta": 1.5,
+    "recon_snr_db": 37.2204526709679,
+    "am_snr_db": 46.79446465376544,
+    "fm_snr_db": 22.011601168644862,
+    "bedrosian_ratio": 1.5,
+    "bits": 0
+  },
+  {
+    "beta": 2.0,
+    "recon_snr_db": 37.22052649885539,
+    "am_snr_db": 29.434596988334036,
+    "fm_snr_db": 20.988446867585907,
+    "bedrosian_ratio": 3.0,
+    "bits": 0
+  },
+  {
+    "beta": 3.0,
+    "recon_snr_db": 37.22054431842164,
+    "am_snr_db": 13.833093265256567,
+    "fm_snr_db": 11.4358103644675,
+    "bedrosian_ratio": Infinity,
+    "bits": 0
+  },
+  {
+    "beta": 4.0,
+    "recon_snr_db": 34.00770995667965,
+    "am_snr_db": 20.66961516247281,
+    "fm_snr_db": 5.164761780111125,
+    "bedrosian_ratio": Infinity,
+    "bits": 0
+  },
+  {
+    "beta": 6.0,
+    "recon_snr_db": 34.00797244132698,
+    "am_snr_db": 14.283941745899407,
+    "fm_snr_db": 5.5299873495391765,
+    "bedrosian_ratio": Infinity,
+    "bits": 0
+  }
+]
+
+=======================================================================
+FILE: results/bedrosian_1794629688.json
+=======================================================================
+[
+  {
+    "beta": 0.05,
+    "recon_snr_db": 37.22079537164451,
+    "am_snr_db": 82.9503644884102,
+    "fm_snr_db": 21.282110910361247,
+    "bedrosian_ratio": 0.6122448979591837,
+    "bits": 0
+  },
+  {
+    "beta": 0.1,
+    "recon_snr_db": 37.22058502279341,
+    "am_snr_db": 71.21877490279915,
+    "fm_snr_db": 21.815351324020426,
+    "bedrosian_ratio": 0.625,
+    "bits": 0
+  },
+  {
+    "beta": 0.25,
+    "recon_snr_db": 37.22050968808279,
+    "am_snr_db": 56.302601094340694,
+    "fm_snr_db": 21.32077052975269,
+    "bedrosian_ratio": 0.6666666666666666,
+    "bits": 0
+  },
+  {
+    "beta": 0.5,
+    "recon_snr_db": 37.22036907541127,
+    "am_snr_db": 46.240602546813705,
+    "fm_snr_db": 20.594924508851964,
+    "bedrosian_ratio": 0.75,
+    "bits": 0
+  },
+  {
+    "beta": 0.75,
+    "recon_snr_db": 37.22067889312245,
+    "am_snr_db": 41.68028208010638,
+    "fm_snr_db": 20.517040791551068,
+    "bedrosian_ratio": 0.8571428571428571,
+    "bits": 0
+  },
+  {
+    "beta": 1.0,
+    "recon_snr_db": 37.22069858909682,
+    "am_snr_db": 39.971908331330575,
+    "fm_snr_db": 21.013026058058806,
+    "bedrosian_ratio": 1.0,
+    "bits": 0
+  },
+  {
+    "beta": 1.5,
+    "recon_snr_db": 37.2204526709679,
+    "am_snr_db": 46.79446465376544,
+    "fm_snr_db": 22.011601168644862,
+    "bedrosian_ratio": 1.5,
+    "bits": 0
+  },
+  {
+    "beta": 2.0,
+    "recon_snr_db": 37.22052649885539,
+    "am_snr_db": 29.434596988334036,
+    "fm_snr_db": 20.988446867585907,
+    "bedrosian_ratio": 3.0,
+    "bits": 0
+  },
+  {
+    "beta": 3.0,
+    "recon_snr_db": 37.22054431842164,
+    "am_snr_db": 13.833093265256567,
+    "fm_snr_db": 11.4358103644675,
+    "bedrosian_ratio": Infinity,
+    "bits": 0
+  },
+  {
+    "beta": 4.0,
+    "recon_snr_db": 34.00770995667965,
+    "am_snr_db": 20.66961516247281,
+    "fm_snr_db": 5.164761780111125,
+    "bedrosian_ratio": Infinity,
+    "bits": 0
+  },
+  {
+    "beta": 6.0,
+    "recon_snr_db": 34.00797244132698,
+    "am_snr_db": 14.283941745899407,
+    "fm_snr_db": 5.5299873495391765,
+    "bedrosian_ratio": Infinity,
+    "bits": 0
+  }
+]
+
+=======================================================================
+FILE: results/bedrosian_1794629812.json
+=======================================================================
+[
+  {
+    "beta": 0.05,
+    "recon_snr_db": 37.22079537164451,
+    "am_snr_db": 82.9503644884102,
+    "fm_snr_db": 21.282110910361247,
+    "bedrosian_ratio": 0.6122448979591837,
+    "bits": 0
+  },
+  {
+    "beta": 0.1,
+    "recon_snr_db": 37.22058502279341,
+    "am_snr_db": 71.21877490279915,
+    "fm_snr_db": 21.815351324020426,
+    "bedrosian_ratio": 0.625,
+    "bits": 0
+  },
+  {
+    "beta": 0.25,
+    "recon_snr_db": 37.22050968808279,
+    "am_snr_db": 56.302601094340694,
+    "fm_snr_db": 21.32077052975269,
+    "bedrosian_ratio": 0.6666666666666666,
+    "bits": 0
+  },
+  {
+    "beta": 0.5,
+    "recon_snr_db": 37.22036907541127,
+    "am_snr_db": 46.240602546813705,
+    "fm_snr_db": 20.594924508851964,
+    "bedrosian_ratio": 0.75,
+    "bits": 0
+  },
+  {
+    "beta": 0.75,
+    "recon_snr_db": 37.22067889312245,
+    "am_snr_db": 41.68028208010638,
+    "fm_snr_db": 20.517040791551068,
+    "bedrosian_ratio": 0.8571428571428571,
+    "bits": 0
+  },
+  {
+    "beta": 1.0,
+    "recon_snr_db": 37.22069858909682,
+    "am_snr_db": 39.971908331330575,
+    "fm_snr_db": 21.013026058058806,
+    "bedrosian_ratio": 1.0,
+    "bits": 0
+  },
+  {
+    "beta": 1.5,
+    "recon_snr_db": 37.2204526709679,
+    "am_snr_db": 46.79446465376544,
+    "fm_snr_db": 22.011601168644862,
+    "bedrosian_ratio": 1.5,
+    "bits": 0
+  },
+  {
+    "beta": 2.0,
+    "recon_snr_db": 37.22052649885539,
+    "am_snr_db": 29.434596988334036,
+    "fm_snr_db": 20.988446867585907,
+    "bedrosian_ratio": 3.0,
+    "bits": 0
+  },
+  {
+    "beta": 3.0,
+    "recon_snr_db": 37.22054431842164,
+    "am_snr_db": 13.833093265256567,
+    "fm_snr_db": 11.4358103644675,
+    "bedrosian_ratio": Infinity,
+    "bits": 0
+  },
+  {
+    "beta": 4.0,
+    "recon_snr_db": 34.00770995667965,
+    "am_snr_db": 20.66961516247281,
+    "fm_snr_db": 5.164761780111125,
+    "bedrosian_ratio": Infinity,
+    "bits": 0
+  },
+  {
+    "beta": 6.0,
+    "recon_snr_db": 34.00797244132698,
+    "am_snr_db": 14.283941745899407,
+    "fm_snr_db": 5.5299873495391765,
+    "bedrosian_ratio": Infinity,
+    "bits": 0
+  }
+]
+
+=======================================================================
+FILE: results/bedrosian_2d_1794629813.json
+=======================================================================
+[
+  {
+    "beta": 0.05,
+    "am_depth": 0.1,
+    "am_snr_db": 74.68717837628874,
+    "fm_snr_db": 21.41598445007398,
+    "bedrosian_ratio": 0.44897959183673475,
+    "env_upper_hz": 440.00000000000006,
+    "carrier_lower_hz": 980.0
+  },
+  {
+    "beta": 0.25,
+    "am_depth": 0.1,
+    "am_snr_db": 60.71170529757651,
+    "fm_snr_db": 22.077587321787494,
+    "bedrosian_ratio": 0.48888888888888893,
+    "env_upper_hz": 440.00000000000006,
+    "carrier_lower_hz": 900.0
+  },
+  {
+    "beta": 0.5,
+    "am_depth": 0.1,
+    "am_snr_db": 36.7649491693225,
+    "fm_snr_db": 22.064771887251318,
+    "bedrosian_ratio": 0.55,
+    "env_upper_hz": 440.00000000000006,
+    "carrier_lower_hz": 800.0
+  },
+  {
+    "beta": 0.75,
+    "am_depth": 0.1,
+    "am_snr_db": 22.816058922585036,
+    "fm_snr_db": 21.792562430038586,
+    "bedrosian_ratio": 0.6285714285714287,
+    "env_upper_hz": 440.00000000000006,
+    "carrier_lower_hz": 700.0
+  },
+  {
+    "beta": 1.0,
+    "am_depth": 0.1,
+    "am_snr_db": 14.1587947814543,
+    "fm_snr_db": 21.08310401101088,
+    "bedrosian_ratio": 0.7333333333333334,
+    "env_upper_hz": 440.00000000000006,
+    "carrier_lower_hz": 600.0
+  },
+  {
+    "beta": 1.5,
+    "am_depth": 0.1,
+    "am_snr_db": 2.876665145834422,
+    "fm_snr_db": 18.94358742076901,
+    "bedrosian_ratio": 1.1,
+    "env_upper_hz": 440.00000000000006,
+    "carrier_lower_hz": 400.0
+  },
+  {
+    "beta": 2.0,
+    "am_depth": 0.1,
+    "am_snr_db": -4.564047966847204,
+    "fm_snr_db": 17.502496423134616,
+    "bedrosian_ratio": 2.2,
+    "env_upper_hz": 440.00000000000006,
+    "carrier_lower_hz": 200.0
+  },
+  {
+    "beta": 3.0,
+    "am_depth": 0.1,
+    "am_snr_db": -12.939004491294558,
+    "fm_snr_db": 2.493594229850507,
+    "bedrosian_ratio": Infinity,
+    "env_upper_hz": 440.00000000000006,
+    "carrier_lower_hz": -200.0
+  },
+  {
+    "beta": 0.05,
+    "am_depth": 0.3,
+    "am_snr_db": 73.61242665308444,
+    "fm_snr_db": 21.35787572371023,
+    "bedrosian_ratio": 0.5306122448979592,
+    "env_upper_hz": 520.0,
+    "carrier_lower_hz": 980.0
+  },
+  {
+    "beta": 0.25,
+    "am_depth": 0.3,
+    "am_snr_db": 48.004876322112615,
+    "fm_snr_db": 21.9220897124257,
+    "bedrosian_ratio": 0.5777777777777777,
+    "env_upper_hz": 520.0,
+    "carrier_lower_hz": 900.0
+  },
+  {
+    "beta": 0.5,
+    "am_depth": 0.3,
+    "am_snr_db": 40.23013455362016,
+    "fm_snr_db": 21.908670408027948,
+    "bedrosian_ratio": 0.65,
+    "env_upper_hz": 520.0,
+    "carrier_lower_hz": 800.0
+  },
+  {
+    "beta": 0.75,
+    "am_depth": 0.3,
+    "am_snr_db": 41.53211803856539,
+    "fm_snr_db": 22.041536363247403,
+    "bedrosian_ratio": 0.7428571428571429,
+    "env_upper_hz": 520.0,
+    "carrier_lower_hz": 700.0
+  },
+  {
+    "beta": 1.0,
+    "am_depth": 0.3,
+    "am_snr_db": 40.55728572626865,
+    "fm_snr_db": 22.071411195328295,
+    "bedrosian_ratio": 0.8666666666666667,
+    "env_upper_hz": 520.0,
+    "carrier_lower_hz": 600.0
+  },
+  {
+    "beta": 1.5,
+    "am_depth": 0.3,
+    "am_snr_db": 18.61485553715505,
+    "fm_snr_db": 20.844738257374953,
+    "bedrosian_ratio": 1.3,
+    "env_upper_hz": 520.0,
+    "carrier_lower_hz": 400.0
+  },
+  {
+    "beta": 2.0,
+    "am_depth": 0.3,
+    "am_snr_db": 8.946701414446514,
+    "fm_snr_db": 19.183351828743366,
+    "bedrosian_ratio": 2.6,
+    "env_upper_hz": 520.0,
+    "carrier_lower_hz": 200.0
+  },
+  {
+    "beta": 3.0,
+    "am_depth": 0.3,
+    "am_snr_db": -1.0696391092925128,
+    "fm_snr_db": 6.679419901928526,
+    "bedrosian_ratio": Infinity,
+    "env_upper_hz": 520.0,
+    "carrier_lower_hz": -200.0
+  },
+  {
+    "beta": 0.05,
+    "am_depth": 0.5,
+    "am_snr_db": 73.40792555551388,
+    "fm_snr_db": 21.282134132211468,
+    "bedrosian_ratio": 0.6122448979591837,
+    "env_upper_hz": 600.0,
+    "carrier_lower_hz": 980.0
+  },
+  {
+    "beta": 0.25,
+    "am_depth": 0.5,
+    "am_snr_db": 46.76129106516342,
+    "fm_snr_db": 21.320771481325455,
+    "bedrosian_ratio": 0.6666666666666666,
+    "env_upper_hz": 600.0,
+    "carrier_lower_hz": 900.0
+  },
+  {
+    "beta": 0.5,
+    "am_depth": 0.5,
+    "am_snr_db": 36.71660125473865,
+    "fm_snr_db": 20.59492469858398,
+    "bedrosian_ratio": 0.75,
+    "env_upper_hz": 600.0,
+    "carrier_lower_hz": 800.0
+  },
+  {
+    "beta": 0.75,
+    "am_depth": 0.5,
+    "am_snr_db": 32.231961163019,
+    "fm_snr_db": 20.517040875460758,
+    "bedrosian_ratio": 0.8571428571428571,
+    "env_upper_hz": 600.0,
+    "carrier_lower_hz": 700.0
+  },
+  {
+    "beta": 1.0,
+    "am_depth": 0.5,
+    "am_snr_db": 30.729357382001766,
+    "fm_snr_db": 21.013026110694533,
+    "bedrosian_ratio": 1.0,
+    "env_upper_hz": 600.0,
+    "carrier_lower_hz": 600.0
+  },
+  {
+    "beta": 1.5,
+    "am_depth": 0.5,
+    "am_snr_db": 38.915514850905794,
+    "fm_snr_db": 22.011601198315866,
+    "bedrosian_ratio": 1.5,
+    "env_upper_hz": 600.0,
+    "carrier_lower_hz": 400.0
+  },
+  {
+    "beta": 2.0,
+    "am_depth": 0.5,
+    "am_snr_db": 20.723626766324696,
+    "fm_snr_db": 20.98844688135894,
+    "bedrosian_ratio": 3.0,
+    "env_upper_hz": 600.0,
+    "carrier_lower_hz": 200.0
+  },
+  {
+    "beta": 3.0,
+    "am_depth": 0.5,
+    "am_snr_db": 6.595565959196497,
+    "fm_snr_db": 11.435810365113817,
+    "bedrosian_ratio": Infinity,
+    "env_upper_hz": 600.0,
+    "carrier_lower_hz": -200.0
+  },
+  {
+    "beta": 0.05,
+    "am_depth": 0.7,
+    "am_snr_db": 73.32265379542085,
+    "fm_snr_db": 21.18115002504018,
+    "bedrosian_ratio": 0.6938775510204082,
+    "env_upper_hz": 680.0,
+    "carrier_lower_hz": 980.0
+  },
+  {
+    "beta": 0.25,
+    "am_depth": 0.7,
+    "am_snr_db": 46.27487770207025,
+    "fm_snr_db": 19.467476956007857,
+    "bedrosian_ratio": 0.7555555555555555,
+    "env_upper_hz": 680.0,
+    "carrier_lower_hz": 900.0
+  },
+  {
+    "beta": 0.5,
+    "am_depth": 0.7,
+    "am_snr_db": 35.543436113001604,
+    "fm_snr_db": 17.264930651398434,
+    "bedrosian_ratio": 0.85,
+    "env_upper_hz": 680.0,
+    "carrier_lower_hz": 800.0
+  },
+  {
+    "beta": 0.75,
+    "am_depth": 0.7,
+    "am_snr_db": 30.034643518228037,
+    "fm_snr_db": 16.559435533437437,
+    "bedrosian_ratio": 0.9714285714285714,
+    "env_upper_hz": 680.0,
+    "carrier_lower_hz": 700.0
+  },
+  {
+    "beta": 1.0,
+    "am_depth": 0.7,
+    "am_snr_db": 26.858246877392105,
+    "fm_snr_db": 16.918017132631558,
+    "bedrosian_ratio": 1.1333333333333333,
+    "env_upper_hz": 680.0,
+    "carrier_lower_hz": 600.0
+  },
+  {
+    "beta": 1.5,
+    "am_depth": 0.7,
+    "am_snr_db": 24.854262747849237,
+    "fm_snr_db": 19.538616055441935,
+    "bedrosian_ratio": 1.7,
+    "env_upper_hz": 680.0,
+    "carrier_lower_hz": 400.0
+  },
+  {
+    "beta": 2.0,
+    "am_depth": 0.7,
+    "am_snr_db": 29.034053917977513,
+    "fm_snr_db": 21.66145300291153,
+    "bedrosian_ratio": 3.4,
+    "env_upper_hz": 680.0,
+    "carrier_lower_hz": 200.0
+  },
+  {
+    "beta": 3.0,
+    "am_depth": 0.7,
+    "am_snr_db": 14.429985386636272,
+    "fm_snr_db": 16.74558064194231,
+    "bedrosian_ratio": Infinity,
+    "env_upper_hz": 680.0,
+    "carrier_lower_hz": -200.0
+  },
+  {
+    "beta": 0.05,
+    "am_depth": 0.9,
+    "am_snr_db": 73.27490188294705,
+    "fm_snr_db": 20.112957917147817,
+    "bedrosian_ratio": 0.7755102040816326,
+    "env_upper_hz": 760.0,
+    "carrier_lower_hz": 980.0
+  },
+  {
+    "beta": 0.25,
+    "am_depth": 0.9,
+    "am_snr_db": 46.00109516838404,
+    "fm_snr_db": 13.356957710560271,
+    "bedrosian_ratio": 0.8444444444444444,
+    "env_upper_hz": 760.0,
+    "carrier_lower_hz": 900.0
+  },
+  {
+    "beta": 0.5,
+    "am_depth": 0.9,
+    "am_snr_db": 34.901615503775176,
+    "fm_snr_db": 10.15926362522572,
+    "bedrosian_ratio": 0.95,
+    "env_upper_hz": 760.0,
+    "carrier_lower_hz": 800.0
+  },
+  {
+    "beta": 0.75,
+    "am_depth": 0.9,
+    "am_snr_db": 28.923491583884932,
+    "fm_snr_db": 9.6462885462944,
+    "bedrosian_ratio": 1.0857142857142856,
+    "env_upper_hz": 760.0,
+    "carrier_lower_hz": 700.0
+  },
+  {
+    "beta": 1.0,
+    "am_depth": 0.9,
+    "am_snr_db": 25.14972410180699,
+    "fm_snr_db": 10.392829642067323,
+    "bedrosian_ratio": 1.2666666666666666,
+    "env_upper_hz": 760.0,
+    "carrier_lower_hz": 600.0
+  },
+  {
+    "beta": 1.5,
+    "am_depth": 0.9,
+    "am_snr_db": 21.18902611777376,
+    "fm_snr_db": 13.956929862625927,
+    "bedrosian_ratio": 1.9,
+    "env_upper_hz": 760.0,
+    "carrier_lower_hz": 400.0
+  },
+  {
+    "beta": 2.0,
+    "am_depth": 0.9,
+    "am_snr_db": 20.534490033708046,
+    "fm_snr_db": 18.983665007073057,
+    "bedrosian_ratio": 3.8,
+    "env_upper_hz": 760.0,
+    "carrier_lower_hz": 200.0
+  },
+  {
+    "beta": 3.0,
+    "am_depth": 0.9,
+    "am_snr_db": 21.66591675758378,
+    "fm_snr_db": 20.112977054461687,
+    "bedrosian_ratio": Infinity,
+    "env_upper_hz": 760.0,
+    "carrier_lower_hz": -200.0
+  }
+]
+
+=======================================================================
+FILE: results/figures/.gitkeep
+=======================================================================
+
+
+=======================================================================
+FILE: results/fm_sweep_1794627487.json
+=======================================================================
+[
+  {
+    "fm_freq_hz": 0.5,
+    "am_fm_snr_db": 42.54276822551215,
+    "stft_fm_snr_db": 60.58178454871313,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": false
+  },
+  {
+    "fm_freq_hz": 1.0,
+    "am_fm_snr_db": 43.27881352787312,
+    "stft_fm_snr_db": 55.624140241247716,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": false
+  },
+  {
+    "fm_freq_hz": 2.0,
+    "am_fm_snr_db": 43.979365794175784,
+    "stft_fm_snr_db": 40.35370420109012,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": false
+  },
+  {
+    "fm_freq_hz": 4.0,
+    "am_fm_snr_db": 43.98515394931033,
+    "stft_fm_snr_db": 29.47455531169541,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": false
+  },
+  {
+    "fm_freq_hz": 8.0,
+    "am_fm_snr_db": 44.19750515672618,
+    "stft_fm_snr_db": 20.567102917374225,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": false
+  },
+  {
+    "fm_freq_hz": 16.0,
+    "am_fm_snr_db": 44.308356886854845,
+    "stft_fm_snr_db": 13.20209848129874,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": false
+  },
+  {
+    "fm_freq_hz": 32.0,
+    "am_fm_snr_db": 43.97875832698365,
+    "stft_fm_snr_db": 2.947427066857347,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": false
+  },
+  {
+    "fm_freq_hz": 64.0,
+    "am_fm_snr_db": 43.77107798092111,
+    "stft_fm_snr_db": 0.0006010375771002596,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": true
+  },
+  {
+    "fm_freq_hz": 128.0,
+    "am_fm_snr_db": 43.53494385374536,
+    "stft_fm_snr_db": -1.6000433046630004e-07,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": true
+  },
+  {
+    "fm_freq_hz": 200.0,
+    "am_fm_snr_db": 43.80679595466127,
+    "stft_fm_snr_db": 2.1719069810235704e-05,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": true
+  }
+]
+
+=======================================================================
+FILE: results/fm_sweep_1794627663.json
+=======================================================================
+[
+  {
+    "fm_freq_hz": 0.5,
+    "am_fm_snr_db": 42.54276822551215,
+    "stft_fm_snr_db": 60.58178454871313,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": false
+  },
+  {
+    "fm_freq_hz": 1.0,
+    "am_fm_snr_db": 43.27881352787312,
+    "stft_fm_snr_db": 55.624140241247716,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": false
+  },
+  {
+    "fm_freq_hz": 2.0,
+    "am_fm_snr_db": 43.979365794175784,
+    "stft_fm_snr_db": 40.35370420109012,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": false
+  },
+  {
+    "fm_freq_hz": 4.0,
+    "am_fm_snr_db": 43.98515394931033,
+    "stft_fm_snr_db": 29.47455531169541,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": false
+  },
+  {
+    "fm_freq_hz": 8.0,
+    "am_fm_snr_db": 44.19750515672618,
+    "stft_fm_snr_db": 20.567102917374225,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": false
+  },
+  {
+    "fm_freq_hz": 16.0,
+    "am_fm_snr_db": 44.308356886854845,
+    "stft_fm_snr_db": 13.20209848129874,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": false
+  },
+  {
+    "fm_freq_hz": 32.0,
+    "am_fm_snr_db": 43.97875832698365,
+    "stft_fm_snr_db": 2.947427066857347,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": false
+  },
+  {
+    "fm_freq_hz": 64.0,
+    "am_fm_snr_db": 43.77107798092111,
+    "stft_fm_snr_db": 0.0006010375771002596,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": true
+  },
+  {
+    "fm_freq_hz": 128.0,
+    "am_fm_snr_db": 43.53494385374536,
+    "stft_fm_snr_db": -1.6000433046630004e-07,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": true
+  },
+  {
+    "fm_freq_hz": 200.0,
+    "am_fm_snr_db": 43.80679595466127,
+    "stft_fm_snr_db": 2.1719069810235704e-05,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": true
+  }
+]
+
+=======================================================================
+FILE: results/fm_sweep_1794627943.json
+=======================================================================
+[
+  {
+    "fm_freq_hz": 0.5,
+    "am_fm_snr_db": 42.54276822551215,
+    "stft_fm_snr_db": 60.58178454871313,
+    "stft_h32_snr_db": 60.50530248152416,
+    "stft_h256_snr_db": -2.7061282177658503,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": false
+  },
+  {
+    "fm_freq_hz": 1.0,
+    "am_fm_snr_db": 43.27881352787312,
+    "stft_fm_snr_db": 55.624140241247716,
+    "stft_h32_snr_db": 57.49066273107289,
+    "stft_h256_snr_db": -2.0754606623279144,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": false
+  },
+  {
+    "fm_freq_hz": 2.0,
+    "am_fm_snr_db": 43.979365794175784,
+    "stft_fm_snr_db": 40.35370420109012,
+    "stft_h32_snr_db": 40.46899425778648,
+    "stft_h256_snr_db": -2.311455875258722,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": false
+  },
+  {
+    "fm_freq_hz": 4.0,
+    "am_fm_snr_db": 43.98515394931033,
+    "stft_fm_snr_db": 29.47455531169541,
+    "stft_h32_snr_db": 29.198486632448525,
+    "stft_h256_snr_db": -1.7357391456539948,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": false
+  },
+  {
+    "fm_freq_hz": 8.0,
+    "am_fm_snr_db": 44.19750515672618,
+    "stft_fm_snr_db": 20.567102917374225,
+    "stft_h32_snr_db": 18.267724436608415,
+    "stft_h256_snr_db": -1.2039114647369045,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": false
+  },
+  {
+    "fm_freq_hz": 16.0,
+    "am_fm_snr_db": 44.308356886854845,
+    "stft_fm_snr_db": 13.20209848129874,
+    "stft_h32_snr_db": 10.774982244849731,
+    "stft_h256_snr_db": -1.3610358382145105,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": false
+  },
+  {
+    "fm_freq_hz": 32.0,
+    "am_fm_snr_db": 43.97875832698365,
+    "stft_fm_snr_db": 2.947427066857347,
+    "stft_h32_snr_db": 6.91087165093707,
+    "stft_h256_snr_db": -0.04212786763559553,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": false
+  },
+  {
+    "fm_freq_hz": 64.0,
+    "am_fm_snr_db": 43.77107798092111,
+    "stft_fm_snr_db": 0.0006010375771002596,
+    "stft_h32_snr_db": -0.05863191834336305,
+    "stft_h256_snr_db": -5.2684385258576515e-06,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": true
+  },
+  {
+    "fm_freq_hz": 128.0,
+    "am_fm_snr_db": 43.53494385374536,
+    "stft_fm_snr_db": -1.6000433046630004e-07,
+    "stft_h32_snr_db": -0.006472653079812225,
+    "stft_h256_snr_db": -1.5680211036924988e-07,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": true
+  },
+  {
+    "fm_freq_hz": 200.0,
+    "am_fm_snr_db": 43.80679595466127,
+    "stft_fm_snr_db": 2.1719069810235704e-05,
+    "stft_h32_snr_db": -0.0013905530639444245,
+    "stft_h256_snr_db": -1.689249469094003e-06,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": true
+  }
+]
+
+=======================================================================
+FILE: results/fm_sweep_1794629817.json
+=======================================================================
+[
+  {
+    "fm_freq_hz": 0.5,
+    "am_fm_snr_db": 42.54276822551215,
+    "stft_fm_snr_db": 60.58178454871313,
+    "stft_h32_snr_db": 60.50530248152416,
+    "stft_h256_snr_db": -2.7061282177658503,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": false
+  },
+  {
+    "fm_freq_hz": 1.0,
+    "am_fm_snr_db": 43.27881352787312,
+    "stft_fm_snr_db": 55.624140241247716,
+    "stft_h32_snr_db": 57.49066273107289,
+    "stft_h256_snr_db": -2.0754606623279144,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": false
+  },
+  {
+    "fm_freq_hz": 2.0,
+    "am_fm_snr_db": 43.979365794175784,
+    "stft_fm_snr_db": 40.35370420109012,
+    "stft_h32_snr_db": 40.46899425778648,
+    "stft_h256_snr_db": -2.311455875258722,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": false
+  },
+  {
+    "fm_freq_hz": 4.0,
+    "am_fm_snr_db": 43.98515394931033,
+    "stft_fm_snr_db": 29.47455531169541,
+    "stft_h32_snr_db": 29.198486632448525,
+    "stft_h256_snr_db": -1.7357391456539948,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": false
+  },
+  {
+    "fm_freq_hz": 8.0,
+    "am_fm_snr_db": 44.19750515672618,
+    "stft_fm_snr_db": 20.567102917374225,
+    "stft_h32_snr_db": 18.267724436608415,
+    "stft_h256_snr_db": -1.2039114647369045,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": false
+  },
+  {
+    "fm_freq_hz": 16.0,
+    "am_fm_snr_db": 44.308356886854845,
+    "stft_fm_snr_db": 13.20209848129874,
+    "stft_h32_snr_db": 10.774982244849731,
+    "stft_h256_snr_db": -1.3610358382145105,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": false
+  },
+  {
+    "fm_freq_hz": 32.0,
+    "am_fm_snr_db": 43.97875832698365,
+    "stft_fm_snr_db": 2.947427066857347,
+    "stft_h32_snr_db": 6.91087165093707,
+    "stft_h256_snr_db": -0.04212786763559553,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": false
+  },
+  {
+    "fm_freq_hz": 64.0,
+    "am_fm_snr_db": 43.77107798092111,
+    "stft_fm_snr_db": 0.0006010375771002596,
+    "stft_h32_snr_db": -0.05863191834336305,
+    "stft_h256_snr_db": -5.2684385258576515e-06,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": true
+  },
+  {
+    "fm_freq_hz": 128.0,
+    "am_fm_snr_db": 43.53494385374536,
+    "stft_fm_snr_db": -1.6000433046630004e-07,
+    "stft_h32_snr_db": -0.006472653079812225,
+    "stft_h256_snr_db": -1.5680211036924988e-07,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": true
+  },
+  {
+    "fm_freq_hz": 200.0,
+    "am_fm_snr_db": 43.80679595466127,
+    "stft_fm_snr_db": 2.1719069810235704e-05,
+    "stft_h32_snr_db": -0.0013905530639444245,
+    "stft_h256_snr_db": -1.689249469094003e-06,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": true
+  }
+]
+
+=======================================================================
+FILE: results/runs/.gitkeep
+=======================================================================
+
+
+=======================================================================
+FILE: results/speech_like_1794627039.json
+=======================================================================
+[
+  {
+    "am_freq_hz": 1.0,
+    "am_vs_theory_db": 90.16690314155738,
+    "am_vs_env_db": 4.319077627950712,
+    "envelope_upper_hz": 1.5,
+    "f1_lower_hz": 650.0,
+    "overlap_ratio": 0.002307692307692308
+  },
+  {
+    "am_freq_hz": 2.0,
+    "am_vs_theory_db": 101.31449893971609,
+    "am_vs_env_db": 4.317352665310402,
+    "envelope_upper_hz": 3.0,
+    "f1_lower_hz": 650.0,
+    "overlap_ratio": 0.004615384615384616
+  },
+  {
+    "am_freq_hz": 4.0,
+    "am_vs_theory_db": 105.07815380919,
+    "am_vs_env_db": 4.316962954271222,
+    "envelope_upper_hz": 6.0,
+    "f1_lower_hz": 650.0,
+    "overlap_ratio": 0.009230769230769232
+  },
+  {
+    "am_freq_hz": 8.0,
+    "am_vs_theory_db": 103.31296055871701,
+    "am_vs_env_db": 4.317488675655437,
+    "envelope_upper_hz": 12.0,
+    "f1_lower_hz": 650.0,
+    "overlap_ratio": 0.018461538461538463
+  },
+  {
+    "am_freq_hz": 16.0,
+    "am_vs_theory_db": 103.72344358887092,
+    "am_vs_env_db": 4.317077542088393,
+    "envelope_upper_hz": 24.0,
+    "f1_lower_hz": 650.0,
+    "overlap_ratio": 0.036923076923076927
+  },
+  {
+    "am_freq_hz": 32.0,
+    "am_vs_theory_db": 104.47506974804739,
+    "am_vs_env_db": 4.317128063079111,
+    "envelope_upper_hz": 48.0,
+    "f1_lower_hz": 650.0,
+    "overlap_ratio": 0.07384615384615385
+  },
+  {
+    "am_freq_hz": 64.0,
+    "am_vs_theory_db": 103.65547413198613,
+    "am_vs_env_db": 4.315971594057152,
+    "envelope_upper_hz": 96.0,
+    "f1_lower_hz": 650.0,
+    "overlap_ratio": 0.1476923076923077
+  },
+  {
+    "am_freq_hz": 128.0,
+    "am_vs_theory_db": 46.981028078545705,
+    "am_vs_env_db": 4.311841493427152,
+    "envelope_upper_hz": 192.0,
+    "f1_lower_hz": 650.0,
+    "overlap_ratio": 0.2953846153846154
+  },
+  {
+    "am_freq_hz": 256.0,
+    "am_vs_theory_db": 41.82134179340994,
+    "am_vs_env_db": 4.317287053581208,
+    "envelope_upper_hz": 384.0,
+    "f1_lower_hz": 650.0,
+    "overlap_ratio": 0.5907692307692308
+  },
+  {
+    "am_freq_hz": 512.0,
+    "am_vs_theory_db": 32.25582519442184,
+    "am_vs_env_db": 4.3170769298194775,
+    "envelope_upper_hz": 768.0,
+    "f1_lower_hz": 650.0,
+    "overlap_ratio": 1.1815384615384616
+  },
+  {
+    "am_freq_hz": 700.0,
+    "am_vs_theory_db": 24.484342678488286,
+    "am_vs_env_db": 4.315462946282201,
+    "envelope_upper_hz": 1050.0,
+    "f1_lower_hz": 650.0,
+    "overlap_ratio": 1.6153846153846154
+  }
+]
+
+=======================================================================
+FILE: results/speech_like_1794627486.json
+=======================================================================
+[
+  {
+    "am_freq_hz": 1.0,
+    "am_vs_theory_db": 84.21617175119282,
+    "am_env_lp_db": 4.778283585466074,
+    "stft_env_lp_db": 2.9091048254220313,
+    "stft_vs_theory_db": 1.4691267019240153,
+    "note": ""
+  },
+  {
+    "am_freq_hz": 2.0,
+    "am_vs_theory_db": 95.72528360215969,
+    "am_env_lp_db": 4.778342334606903,
+    "stft_env_lp_db": 2.9024838413706906,
+    "stft_vs_theory_db": 1.7741026396589579,
+    "note": ""
+  },
+  {
+    "am_freq_hz": 4.0,
+    "am_vs_theory_db": 99.20109538467854,
+    "am_env_lp_db": 4.777822983521687,
+    "stft_env_lp_db": 2.875423061488591,
+    "stft_vs_theory_db": 1.5241177006693296,
+    "note": ""
+  },
+  {
+    "am_freq_hz": 8.0,
+    "am_vs_theory_db": 97.5611508177382,
+    "am_env_lp_db": 4.778004847586718,
+    "stft_env_lp_db": 2.7731335098671,
+    "stft_vs_theory_db": 1.597571278186349,
+    "note": ""
+  },
+  {
+    "am_freq_hz": 16.0,
+    "am_vs_theory_db": 97.96744720019291,
+    "am_env_lp_db": 4.77800915688834,
+    "stft_env_lp_db": 2.3980787143040514,
+    "stft_vs_theory_db": 1.4650920190374634,
+    "note": ""
+  },
+  {
+    "am_freq_hz": 32.0,
+    "am_vs_theory_db": 98.68686955086302,
+    "am_env_lp_db": 4.777902482406763,
+    "stft_env_lp_db": 1.3615720252262131,
+    "stft_vs_theory_db": 0.950023632975242,
+    "note": "above-LPF"
+  },
+  {
+    "am_freq_hz": 64.0,
+    "am_vs_theory_db": 97.86189625712748,
+    "am_env_lp_db": 4.517119493497718,
+    "stft_env_lp_db": -9.752591850481828,
+    "stft_vs_theory_db": 0.11005543430828992,
+    "note": "above-LPF"
+  },
+  {
+    "am_freq_hz": 128.0,
+    "am_vs_theory_db": 41.17612541679633,
+    "am_env_lp_db": -73.66741587255862,
+    "stft_env_lp_db": -76.00643443642214,
+    "stft_vs_theory_db": 0.01332205887801469,
+    "note": "above-LPF"
+  },
+  {
+    "am_freq_hz": 256.0,
+    "am_vs_theory_db": 36.044730879435726,
+    "am_env_lp_db": -92.4478416345274,
+    "stft_env_lp_db": -93.80935205813692,
+    "stft_vs_theory_db": 0.00434915149555665,
+    "note": "above-LPF"
+  },
+  {
+    "am_freq_hz": 512.0,
+    "am_vs_theory_db": 26.48117116540234,
+    "am_env_lp_db": -90.22411897878266,
+    "stft_env_lp_db": -88.664871209621,
+    "stft_vs_theory_db": 0.013870830309534087,
+    "note": "above-LPF"
+  },
+  {
+    "am_freq_hz": 700.0,
+    "am_vs_theory_db": 18.70774105981219,
+    "am_env_lp_db": -76.65433264174975,
+    "stft_env_lp_db": -83.14071686586594,
+    "stft_vs_theory_db": -0.0018774435050122338,
+    "note": "above-LPF"
+  }
+]
+
+=======================================================================
+FILE: results/speech_like_1794627662.json
+=======================================================================
+[
+  {
+    "am_freq_hz": 1.0,
+    "am_vs_theory_db": 84.21618568261543,
+    "am_env_lp_db": 67.89626821292472,
+    "stft_env_lp_db": 65.2307958073958,
+    "stft_vs_theory_db": -3.2388813847006914,
+    "note": "in-band"
+  },
+  {
+    "am_freq_hz": 2.0,
+    "am_vs_theory_db": 95.72528876825018,
+    "am_env_lp_db": 69.65999627037733,
+    "stft_env_lp_db": 63.75292747612573,
+    "stft_vs_theory_db": -2.2006327692917713,
+    "note": "in-band"
+  },
+  {
+    "am_freq_hz": 4.0,
+    "am_vs_theory_db": 99.20110032729599,
+    "am_env_lp_db": 70.53014933260638,
+    "stft_env_lp_db": 55.2318864027821,
+    "stft_vs_theory_db": -3.0149962724780606,
+    "note": "in-band"
+  },
+  {
+    "am_freq_hz": 8.0,
+    "am_vs_theory_db": 97.5611514378383,
+    "am_env_lp_db": 70.49530141856624,
+    "stft_env_lp_db": 44.31091590311698,
+    "stft_vs_theory_db": -2.6529464153262583,
+    "note": "in-band"
+  },
+  {
+    "am_freq_hz": 16.0,
+    "am_vs_theory_db": 97.96744851344435,
+    "am_env_lp_db": 69.17984364853818,
+    "stft_env_lp_db": 43.27110473135286,
+    "stft_vs_theory_db": -2.671371938295413,
+    "note": "in-band"
+  },
+  {
+    "am_freq_hz": 32.0,
+    "am_vs_theory_db": 98.68687654497302,
+    "am_env_lp_db": 60.50233996186243,
+    "stft_env_lp_db": 37.39998262495578,
+    "stft_vs_theory_db": -2.860254857474467,
+    "note": "lpf-limited"
+  },
+  {
+    "am_freq_hz": 64.0,
+    "am_vs_theory_db": 97.86190499206296,
+    "am_env_lp_db": 9.979202597910932,
+    "stft_env_lp_db": -45.77887752126044,
+    "stft_vs_theory_db": -8.00741030942693,
+    "note": "lpf-limited"
+  },
+  {
+    "am_freq_hz": 128.0,
+    "am_vs_theory_db": 41.175877922798485,
+    "am_env_lp_db": -49.90295311621266,
+    "stft_env_lp_db": -51.134944176210496,
+    "stft_vs_theory_db": -24.52733562903738,
+    "note": "lpf-limited"
+  },
+  {
+    "am_freq_hz": 256.0,
+    "am_vs_theory_db": 36.04365767297465,
+    "am_env_lp_db": -23.799023213399874,
+    "stft_env_lp_db": -27.553618354760395,
+    "stft_vs_theory_db": -29.782597110474555,
+    "note": "lpf-limited"
+  },
+  {
+    "am_freq_hz": 512.0,
+    "am_vs_theory_db": 26.471946243696646,
+    "am_env_lp_db": -21.191720828073063,
+    "stft_env_lp_db": -21.944459953726465,
+    "stft_vs_theory_db": -24.671711967329873,
+    "note": "lpf-limited"
+  },
+  {
+    "am_freq_hz": 700.0,
+    "am_vs_theory_db": 18.653191154999156,
+    "am_env_lp_db": -19.371806925821467,
+    "stft_env_lp_db": -20.43572723665589,
+    "stft_vs_theory_db": -52.59800615877186,
+    "note": "lpf-limited"
+  }
+]
+
+=======================================================================
+FILE: results/speech_like_1794627942.json
+=======================================================================
+[
+  {
+    "am_freq_hz": 1.0,
+    "am_vs_theory_db": 84.21618568261543,
+    "am_env_lp_db": 67.89626821292472,
+    "stft_env_lp_db": 65.2307958073958,
+    "stft_env_short_db": 65.31145640580115,
+    "lpf_eff_hz": 30.0,
+    "stft_vs_theory_db": -3.2388813847006914,
+    "note": "in-band"
+  },
+  {
+    "am_freq_hz": 2.0,
+    "am_vs_theory_db": 95.72528876825018,
+    "am_env_lp_db": 69.65999627037733,
+    "stft_env_lp_db": 63.75292747612573,
+    "stft_env_short_db": 66.53345439212997,
+    "lpf_eff_hz": 30.0,
+    "stft_vs_theory_db": -2.2006327692917713,
+    "note": "in-band"
+  },
+  {
+    "am_freq_hz": 4.0,
+    "am_vs_theory_db": 99.20110032729599,
+    "am_env_lp_db": 70.53014933260638,
+    "stft_env_lp_db": 55.2318864027821,
+    "stft_env_short_db": 65.18324233610218,
+    "lpf_eff_hz": 30.0,
+    "stft_vs_theory_db": -3.0149962724780606,
+    "note": "in-band"
+  },
+  {
+    "am_freq_hz": 8.0,
+    "am_vs_theory_db": 97.5611514378383,
+    "am_env_lp_db": 70.49530141856624,
+    "stft_env_lp_db": 44.31091590311698,
+    "stft_env_short_db": 63.85804298472917,
+    "lpf_eff_hz": 30.0,
+    "stft_vs_theory_db": -2.6529464153262583,
+    "note": "in-band"
+  },
+  {
+    "am_freq_hz": 16.0,
+    "am_vs_theory_db": 97.96744851344435,
+    "am_env_lp_db": 69.17984364853818,
+    "stft_env_lp_db": 43.27110473135286,
+    "stft_env_short_db": 62.18622701512855,
+    "lpf_eff_hz": 30.0,
+    "stft_vs_theory_db": -2.671371938295413,
+    "note": "in-band"
+  },
+  {
+    "am_freq_hz": 32.0,
+    "am_vs_theory_db": 98.68687654497302,
+    "am_env_lp_db": 60.433517850727114,
+    "stft_env_lp_db": 40.316202468650395,
+    "stft_env_short_db": 58.61784017303183,
+    "lpf_eff_hz": 48.0,
+    "stft_vs_theory_db": -2.860254857474467,
+    "note": "lpf-limited"
+  },
+  {
+    "am_freq_hz": 64.0,
+    "am_vs_theory_db": 97.86190499206296,
+    "am_env_lp_db": 18.306344533020788,
+    "stft_env_lp_db": -2.4022918760487624,
+    "stft_env_short_db": 15.827143347044872,
+    "lpf_eff_hz": 96.0,
+    "stft_vs_theory_db": -8.00741030942693,
+    "note": "lpf-limited"
+  },
+  {
+    "am_freq_hz": 128.0,
+    "am_vs_theory_db": 41.175877922798485,
+    "am_env_lp_db": 7.141971295774372,
+    "stft_env_lp_db": -64.95527607781165,
+    "stft_env_short_db": 4.125144802349963,
+    "lpf_eff_hz": 192.0,
+    "stft_vs_theory_db": -24.52733562903738,
+    "note": "lpf-limited"
+  },
+  {
+    "am_freq_hz": 256.0,
+    "am_vs_theory_db": 36.04365767297465,
+    "am_env_lp_db": 5.448118309423572,
+    "stft_env_lp_db": -76.55495137057233,
+    "stft_env_short_db": -14.341814793890936,
+    "lpf_eff_hz": 384.0,
+    "stft_vs_theory_db": -29.782597110474555,
+    "note": "lpf-limited"
+  },
+  {
+    "am_freq_hz": 512.0,
+    "am_vs_theory_db": 26.471946243696646,
+    "am_env_lp_db": -2.193233790071954,
+    "stft_env_lp_db": -69.42674589139246,
+    "stft_env_short_db": -60.90108313465932,
+    "lpf_eff_hz": 500.0,
+    "stft_vs_theory_db": -24.671711967329873,
+    "note": "lpf-limited"
+  },
+  {
+    "am_freq_hz": 700.0,
+    "am_vs_theory_db": 18.653191154999156,
+    "am_env_lp_db": -19.548893939096693,
+    "stft_env_lp_db": -89.48551699303269,
+    "stft_env_short_db": -105.58627060603136,
+    "lpf_eff_hz": 500.0,
+    "stft_vs_theory_db": -52.59800615877186,
+    "note": "lpf-limited"
+  }
+]
+
+=======================================================================
+FILE: results/speech_like_1794629816.json
+=======================================================================
+[
+  {
+    "am_freq_hz": 1.0,
+    "am_vs_theory_db": 84.21618568261543,
+    "am_env_lp_db": 67.89626821292472,
+    "stft_env_lp_db": 65.2307958073958,
+    "stft_env_short_db": 65.31145640580115,
+    "lpf_eff_hz": 30.0,
+    "stft_vs_theory_db": -3.2388813847006914,
+    "note": "in-band"
+  },
+  {
+    "am_freq_hz": 2.0,
+    "am_vs_theory_db": 95.72528876825018,
+    "am_env_lp_db": 69.65999627037733,
+    "stft_env_lp_db": 63.75292747612573,
+    "stft_env_short_db": 66.53345439212997,
+    "lpf_eff_hz": 30.0,
+    "stft_vs_theory_db": -2.2006327692917713,
+    "note": "in-band"
+  },
+  {
+    "am_freq_hz": 4.0,
+    "am_vs_theory_db": 99.20110032729599,
+    "am_env_lp_db": 70.53014933260638,
+    "stft_env_lp_db": 55.2318864027821,
+    "stft_env_short_db": 65.18324233610218,
+    "lpf_eff_hz": 30.0,
+    "stft_vs_theory_db": -3.0149962724780606,
+    "note": "in-band"
+  },
+  {
+    "am_freq_hz": 8.0,
+    "am_vs_theory_db": 97.5611514378383,
+    "am_env_lp_db": 70.49530141856624,
+    "stft_env_lp_db": 44.31091590311698,
+    "stft_env_short_db": 63.85804298472917,
+    "lpf_eff_hz": 30.0,
+    "stft_vs_theory_db": -2.6529464153262583,
+    "note": "in-band"
+  },
+  {
+    "am_freq_hz": 16.0,
+    "am_vs_theory_db": 97.96744851344435,
+    "am_env_lp_db": 69.17984364853818,
+    "stft_env_lp_db": 43.27110473135286,
+    "stft_env_short_db": 62.18622701512855,
+    "lpf_eff_hz": 30.0,
+    "stft_vs_theory_db": -2.671371938295413,
+    "note": "in-band"
+  },
+  {
+    "am_freq_hz": 32.0,
+    "am_vs_theory_db": 98.68687654497302,
+    "am_env_lp_db": 60.433517850727114,
+    "stft_env_lp_db": 40.316202468650395,
+    "stft_env_short_db": 58.61784017303183,
+    "lpf_eff_hz": 48.0,
+    "stft_vs_theory_db": -2.860254857474467,
+    "note": "lpf-limited"
+  },
+  {
+    "am_freq_hz": 64.0,
+    "am_vs_theory_db": 97.86190499206296,
+    "am_env_lp_db": 18.306344533020788,
+    "stft_env_lp_db": -2.4022918760487624,
+    "stft_env_short_db": 15.827143347044872,
+    "lpf_eff_hz": 96.0,
+    "stft_vs_theory_db": -8.00741030942693,
+    "note": "lpf-limited"
+  },
+  {
+    "am_freq_hz": 128.0,
+    "am_vs_theory_db": 41.175877922798485,
+    "am_env_lp_db": 7.141971295774372,
+    "stft_env_lp_db": -64.95527607781165,
+    "stft_env_short_db": 4.125144802349963,
+    "lpf_eff_hz": 192.0,
+    "stft_vs_theory_db": -24.52733562903738,
+    "note": "lpf-limited"
+  },
+  {
+    "am_freq_hz": 256.0,
+    "am_vs_theory_db": 36.04365767297465,
+    "am_env_lp_db": 5.448118309423572,
+    "stft_env_lp_db": -76.55495137057233,
+    "stft_env_short_db": -14.341814793890936,
+    "lpf_eff_hz": 384.0,
+    "stft_vs_theory_db": -29.782597110474555,
+    "note": "lpf-limited"
+  },
+  {
+    "am_freq_hz": 512.0,
+    "am_vs_theory_db": 26.471946243696646,
+    "am_env_lp_db": -2.193233790071954,
+    "stft_env_lp_db": -69.42674589139246,
+    "stft_env_short_db": -60.90108313465932,
+    "lpf_eff_hz": 500.0,
+    "stft_vs_theory_db": -24.671711967329873,
+    "note": "lpf-limited"
+  },
+  {
+    "am_freq_hz": 700.0,
+    "am_vs_theory_db": 18.653191154999156,
+    "am_env_lp_db": -19.548893939096693,
+    "stft_env_lp_db": -89.48551699303269,
+    "stft_env_short_db": -105.58627060603136,
+    "lpf_eff_hz": 500.0,
+    "stft_vs_theory_db": -52.59800615877186,
+    "note": "lpf-limited"
+  }
+]
+
+=======================================================================
+FILE: scripts/gen_synthetic.py
+=======================================================================
+from pathlib import Path
+import numpy as np
+from scipy.io import wavfile
+from modulab.data.synth import generate_synthetic_corpus
+
+
+def main():
+    out = Path("data/synthetic")
+    out.mkdir(parents=True, exist_ok=True)
+    corpus = generate_synthetic_corpus(fs=16000, duration_s=3.0)
+    for name, sig in corpus.items():
+        wavfile.write(str(out / f"{name}.wav"), 16000, (sig * 32767).astype(np.int16))
+    print(f"Wrote {len(corpus)} WAVs to {out}")
+
+
+if __name__ == "__main__":
+    main()
+
+
+=======================================================================
+FILE: setup.log
+=======================================================================
+=== ModuLab bootstrap — Sat Nov 14 00:34:38 PKT 2026 ===
+  Project : /storage/emulated/0/projects/modulab
+  Venv    : /data/data/com.termux/files/home/.venvs/modulab-venv
+  Log     : /storage/emulated/0/projects/modulab/setup.log
+
+[1/12] Killing hung build processes...
+               total        used        free      shared  buff/cache   available
+Mem:           2.8Gi       2.0Gi        43Mi        24Mi       829Mi       780Mi
+
+[2/12] Locating source...
+  Found source: /data/data/com.termux/files/home/modulab-project
+
+[3/12] Relocating source to /storage/emulated/0/projects/modulab...
+  Copied.
+  Contents: .gitignore HYPOTHESIS.md README.md benchmarks data docs fs.md g.sh modulab modulab-project modulab.egg-info modulab_config.yaml pyproject.toml results scripts setup.log tests 
+
+[4/12] Writing lite config...
+  Wrote /storage/emulated/0/projects/modulab/modulab_config_lite.yaml
+
+[5/12] Installing prebuilt packages (downloads ~200 MB)...
+Building dependency tree...
+Reading state information...
+21 packages can be upgraded. Run 'apt list --upgradable' to see them.
+  → python
+Setting up python-ensurepip-wheels (3.14.10) ...
+Processing triggers for mandoc (1.14.6-8) ...
+  → python-pip
+Use 'apt autoremove' to remove it.
+0 upgraded, 0 newly installed, 0 to remove and 19 not upgraded.
+  → python-numpy
+Setting up libopenblas (0.3.34) ...
+Setting up python-numpy (2.5.4) ...
+  → python-scipy
+Requirement already satisfied: scipy in ./data/data/com.termux/files/usr/lib/python3.14/site-packages (1.18.1)
+Requirement already satisfied: numpy<2.8,>=2.0.0 in ./data/data/com.termux/files/usr/lib/python3.14/site-packages (from scipy) (2.5.4)
+  → python-matplotlib
+Reading state information...
+E: Unable to locate package python-matplotlib
+    warning: python-matplotlib failed (may already exist)
+  → rsync
+Setting up rsync (3.5.2) ...
+Processing triggers for mandoc (1.14.6-8) ...
+  → git
+Setting up git (2.56.1) ...
+Processing triggers for mandoc (1.14.6-8) ...
+
+[6/12] Creating venv at /data/data/com.termux/files/home/.venvs/modulab-venv...
+g.sh: line 160: which: command not found
+  venv active: 
+
+[7/12] Installing pure-Python deps...
+  Done.
+
+[8/12] Installing modulab (editable)...
+g.sh: line 176: /tmp/pip_e.log: No such file or directory
+g.sh: line 178: /tmp/pip_ne.log: No such file or directory
+  pip install failed — falling back to PYTHONPATH.
+
+[9/12] Verifying imports...
+  ERROR: import failed.
+  Try: pkg install python-numpy python-scipy python-matplotlib
+
+
+=======================================================================
+FILE: tests/test_metrics.py
+=======================================================================
+import numpy as np
+from modulab.metrics.quality import snr_db, si_sdr_db, mcd_db
+
+
+def test_snr_identical():
+    x = np.random.randn(1000)
+    assert snr_db(x, x) > 100
+
+
+def test_si_sdr_scale():
+    x = np.random.randn(1000)
+    assert si_sdr_db(x, 3.0 * x) > 100
+
+
+def test_mcd_identical():
+    x = np.random.randn(16000).astype(np.float32) * 0.1
+    assert mcd_db(x, x) < 0.01
+
+
+=======================================================================
+FILE: tests/test_operators.py
+=======================================================================
+import numpy as np
+from modulab.config import Config
+from modulab import representations as R, operators as O
+
+
+def test_passthrough_identity():
+    cfg = Config.load("modulab_config.yaml")
+    x = np.random.randn(16000).astype(np.float32) * 0.1
+    r = R.build("stft", cfg)
+    enc = r.encode(x, cfg.fs)
+    y1 = r.decode(enc)
+    y2 = r.decode(O.build("passthrough").apply(enc))
+    np.testing.assert_allclose(y1, y2, atol=1e-5)
+
+
+def test_noise_gate_amfm():
+    cfg = Config.load("modulab_config.yaml")
+    x = np.random.randn(16000).astype(np.float32) * 0.001
+    r = R.build("filterbank_amfm", cfg)
+    enc = r.encode(x, cfg.fs)
+    enc2 = O.build("noise_gate").apply(enc)
+    assert np.any(enc2.data["am"] == 0.0)
+
+
+=======================================================================
+FILE: tests/test_parallel.py
+=======================================================================
+import numpy as np
+import pytest
+
+from modulab.config import Config
+from modulab import representations as R
+from modulab.data.synth import formant_vowel
+
+
+@pytest.fixture
+def cfg():
+    return Config.load("modulab_config.yaml")
+
+
+def test_parallel_flops_is_sum(cfg):
+    r_par = R.build("parallel", cfg)
+    r_a = R.build("filterbank_amfm", cfg)
+    r_b = R.build("stft", cfg)
+    n = 16000
+    assert r_par.flops_encode(n) == r_a.flops_encode(n) + r_b.flops_encode(n)
+
+
+def test_parallel_roundtrip(cfg):
+    r = R.build("parallel", cfg)
+    x = formant_vowel(16000, 1.0, seed=0)
+    y = r.decode(r.encode(x, 16000))
+    assert len(y) == len(x)
+    assert np.isfinite(y).all()
+
+
+def test_crossover_preserves_tones(cfg):
+    cfg.raw["representations"]["parallel"]["fusion"] = "crossover"
+    r = R.build("parallel", cfg)
+    fs = 16000
+    t = np.arange(fs) / fs
+    x = (0.3 * np.sin(2 * np.pi * 500 * t) + 0.3 * np.sin(2 * np.pi * 3000 * t)).astype(np.float32)
+    y = r.decode(r.encode(x, fs))
+    Y = np.abs(np.fft.rfft(y))
+    freqs = np.fft.rfftfreq(len(y), 1.0 / fs)
+    e_low = Y[np.argmin(np.abs(freqs - 500))]
+    e_high = Y[np.argmin(np.abs(freqs - 3000))]
+    assert e_low > 5 and e_high > 5
+
+
+=======================================================================
+FILE: tests/test_representations.py
+=======================================================================
+import numpy as np
+import pytest
+
+from modulab.config import Config
+from modulab import representations as R
+from modulab.data.synth import formant_vowel, am_fm_tone
+
+
+@pytest.fixture
+def cfg():
+    return Config.load("modulab_config.yaml")
+
+
+@pytest.mark.parametrize("name,min_snr", [("stft", 15.0), ("filterbank_amfm", 5.0)])
+def test_roundtrip_snr(cfg, name, min_snr):
+    fs = cfg.fs
+    x = formant_vowel(fs, 1.0, seed=0)
+    r = R.build(name, cfg)
+    enc = r.encode(x, fs)
+    y = r.decode(enc)
+    n = min(len(x), len(y))
+    noise = x[:n] - y[:n]
+    snr = 10 * np.log10((np.sum(x[:n] ** 2) + 1e-20) / (np.sum(noise ** 2) + 1e-20))
+    assert snr > min_snr, f"{name} SNR={snr:.1f}"
+
+
+def test_narrowband_amfm(cfg):
+    fs = cfg.fs
+    x = am_fm_tone(fs, 1.0, fc=1000, am_freq=5, am_depth=0.5, fm_freq=10, fm_depth=10)
+    r = R.build("filterbank_amfm", cfg)
+    y = r.decode(r.encode(x, fs))
+    n = min(len(x), len(y))
+    noise = x[:n] - y[:n]
+    snr = 10 * np.log10((np.sum(x[:n] ** 2) + 1e-20) / (np.sum(noise ** 2) + 1e-20))
+    assert snr > 3.0, f"narrowband AM/FM SNR={snr:.1f}"
+
+

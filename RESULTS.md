@@ -23,9 +23,9 @@
 
 | Representation | FLOPs encode | FLOPs decode | Wall ms enc | Wall ms dec |
 |---|---|---|---|---|
-| filterbank_amfm | 1.73e+07 | 7.68e+05 | 856.03 | 72.14 |
-| parallel | 2.18e+07 | 5.34e+06 | 675.00 | 150.81 |
-| stft | 4.52e+06 | 4.52e+06 | 26.85 | 87.94 |
+| filterbank_amfm | 1.73e+07 | 7.68e+05 | 494.73 | 43.94 |
+| parallel | 2.18e+07 | 5.34e+06 | 510.48 | 118.33 |
+| stft | 4.52e+06 | 4.52e+06 | 18.33 | 61.68 |
 
 ## Table 3 - Narrowband sweep (12-bit, single band)
 
@@ -63,8 +63,6 @@
 At 8-bit, AM/FM SNR -2.8 dB vs STFT 46.2 dB; AM/FM encode 1.73e+07 FLOPs vs STFT 4.52e+06 FLOPs.
 Parallel encode costs 2.18e+07 FLOPs (sum of branches, no discount).
 Narrowband (BW/fc<=0.25) SNR 20.6 dB vs wideband (BW/fc>=0.5) 24.7 dB.
-
----
 
 # Extended Analysis
 

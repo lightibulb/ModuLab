@@ -117,5 +117,19 @@ def generate_report(results, sweep, out_dir, config_path):
     L.append("")
 
     text = "\n".join(L)
-    Path("RESULTS.md").write_text(text)
-    return text
+
+    # PRESERVE extended section (Tables 4-7, Consolidated Verdict)
+    # if it exists — prevents bench from wiping append-added tables.
+    target = Path("RESULTS.md")
+    preserved = ""
+    if target.exists():
+        existing = target.read_text()
+        for marker in ["\n# Extended Analysis", "\n## Table 4",
+                       "\n## Consolidated Verdict"]:
+            pos = existing.find(marker)
+            if pos >= 0:
+                preserved = existing[pos:]
+                break
+
+    target.write_text(text + preserved)
+    return text + preserved
