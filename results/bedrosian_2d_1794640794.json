@@ -1,0 +1,362 @@
+[
+  {
+    "beta": 0.05,
+    "am_depth": 0.1,
+    "am_snr_db": 74.68717837628874,
+    "fm_snr_db": 21.41598445007398,
+    "bedrosian_ratio": 0.0,
+    "env_upper_hz": 0.0,
+    "car_lower_hz": 1000.0
+  },
+  {
+    "beta": 0.25,
+    "am_depth": 0.1,
+    "am_snr_db": 60.71170529757651,
+    "fm_snr_db": 22.077587321787494,
+    "bedrosian_ratio": 0.0,
+    "env_upper_hz": 0.0,
+    "car_lower_hz": 600.0
+  },
+  {
+    "beta": 0.5,
+    "am_depth": 0.1,
+    "am_snr_db": 36.7649491693225,
+    "fm_snr_db": 22.064771887251318,
+    "bedrosian_ratio": 0.0,
+    "env_upper_hz": 0.0,
+    "car_lower_hz": 600.0
+  },
+  {
+    "beta": 0.75,
+    "am_depth": 0.1,
+    "am_snr_db": 22.816058922585036,
+    "fm_snr_db": 21.792562430038586,
+    "bedrosian_ratio": 0.0,
+    "env_upper_hz": 0.0,
+    "car_lower_hz": 600.0
+  },
+  {
+    "beta": 1.0,
+    "am_depth": 0.1,
+    "am_snr_db": 14.1587947814543,
+    "fm_snr_db": 21.08310401101088,
+    "bedrosian_ratio": 0.0,
+    "env_upper_hz": 0.0,
+    "car_lower_hz": 200.0
+  },
+  {
+    "beta": 1.5,
+    "am_depth": 0.1,
+    "am_snr_db": 2.876665145834422,
+    "fm_snr_db": 18.94358742076901,
+    "bedrosian_ratio": 0.0,
+    "env_upper_hz": 0.0,
+    "car_lower_hz": 200.0
+  },
+  {
+    "beta": 2.0,
+    "am_depth": 0.1,
+    "am_snr_db": -4.564047966847204,
+    "fm_snr_db": 17.502496423134616,
+    "bedrosian_ratio": 0.0,
+    "env_upper_hz": 0.0,
+    "car_lower_hz": 200.0
+  },
+  {
+    "beta": 3.0,
+    "am_depth": 0.1,
+    "am_snr_db": -12.939004491294558,
+    "fm_snr_db": 2.493594229850507,
+    "bedrosian_ratio": 0.0,
+    "env_upper_hz": 0.0,
+    "car_lower_hz": 200.0
+  },
+  {
+    "beta": 0.05,
+    "am_depth": 0.3,
+    "am_snr_db": 73.61242665308444,
+    "fm_snr_db": 21.35787572371023,
+    "bedrosian_ratio": 0.4,
+    "env_upper_hz": 400.0,
+    "car_lower_hz": 1000.0
+  },
+  {
+    "beta": 0.25,
+    "am_depth": 0.3,
+    "am_snr_db": 48.004876322112615,
+    "fm_snr_db": 21.9220897124257,
+    "bedrosian_ratio": 0.6666666666666666,
+    "env_upper_hz": 400.0,
+    "car_lower_hz": 600.0
+  },
+  {
+    "beta": 0.5,
+    "am_depth": 0.3,
+    "am_snr_db": 40.23013455362016,
+    "fm_snr_db": 21.908670408027948,
+    "bedrosian_ratio": 0.6666666666666666,
+    "env_upper_hz": 400.0,
+    "car_lower_hz": 600.0
+  },
+  {
+    "beta": 0.75,
+    "am_depth": 0.3,
+    "am_snr_db": 41.53211803856539,
+    "fm_snr_db": 22.041536363247403,
+    "bedrosian_ratio": 0.6666666666666666,
+    "env_upper_hz": 400.0,
+    "car_lower_hz": 600.0
+  },
+  {
+    "beta": 1.0,
+    "am_depth": 0.3,
+    "am_snr_db": 40.55728572626865,
+    "fm_snr_db": 22.071411195328295,
+    "bedrosian_ratio": 2.0,
+    "env_upper_hz": 400.0,
+    "car_lower_hz": 200.0
+  },
+  {
+    "beta": 1.5,
+    "am_depth": 0.3,
+    "am_snr_db": 18.61485553715505,
+    "fm_snr_db": 20.844738257374953,
+    "bedrosian_ratio": 2.0,
+    "env_upper_hz": 400.0,
+    "car_lower_hz": 200.0
+  },
+  {
+    "beta": 2.0,
+    "am_depth": 0.3,
+    "am_snr_db": 8.946701414446514,
+    "fm_snr_db": 19.183351828743366,
+    "bedrosian_ratio": 2.0,
+    "env_upper_hz": 400.0,
+    "car_lower_hz": 200.0
+  },
+  {
+    "beta": 3.0,
+    "am_depth": 0.3,
+    "am_snr_db": -1.0696391092925128,
+    "fm_snr_db": 6.679419901928526,
+    "bedrosian_ratio": 2.0,
+    "env_upper_hz": 400.0,
+    "car_lower_hz": 200.0
+  },
+  {
+    "beta": 0.05,
+    "am_depth": 0.5,
+    "am_snr_db": 73.40792555551388,
+    "fm_snr_db": 21.282134132211468,
+    "bedrosian_ratio": 0.4,
+    "env_upper_hz": 400.0,
+    "car_lower_hz": 1000.0
+  },
+  {
+    "beta": 0.25,
+    "am_depth": 0.5,
+    "am_snr_db": 46.76129106516342,
+    "fm_snr_db": 21.320771481325455,
+    "bedrosian_ratio": 0.6666666666666666,
+    "env_upper_hz": 400.0,
+    "car_lower_hz": 600.0
+  },
+  {
+    "beta": 0.5,
+    "am_depth": 0.5,
+    "am_snr_db": 36.71660125473865,
+    "fm_snr_db": 20.59492469858398,
+    "bedrosian_ratio": 0.6666666666666666,
+    "env_upper_hz": 400.0,
+    "car_lower_hz": 600.0
+  },
+  {
+    "beta": 0.75,
+    "am_depth": 0.5,
+    "am_snr_db": 32.231961163019,
+    "fm_snr_db": 20.517040875460758,
+    "bedrosian_ratio": 0.6666666666666666,
+    "env_upper_hz": 400.0,
+    "car_lower_hz": 600.0
+  },
+  {
+    "beta": 1.0,
+    "am_depth": 0.5,
+    "am_snr_db": 30.729357382001766,
+    "fm_snr_db": 21.013026110694533,
+    "bedrosian_ratio": 2.0,
+    "env_upper_hz": 400.0,
+    "car_lower_hz": 200.0
+  },
+  {
+    "beta": 1.5,
+    "am_depth": 0.5,
+    "am_snr_db": 38.915514850905794,
+    "fm_snr_db": 22.011601198315866,
+    "bedrosian_ratio": 2.0,
+    "env_upper_hz": 400.0,
+    "car_lower_hz": 200.0
+  },
+  {
+    "beta": 2.0,
+    "am_depth": 0.5,
+    "am_snr_db": 20.723626766324696,
+    "fm_snr_db": 20.98844688135894,
+    "bedrosian_ratio": 2.0,
+    "env_upper_hz": 400.0,
+    "car_lower_hz": 200.0
+  },
+  {
+    "beta": 3.0,
+    "am_depth": 0.5,
+    "am_snr_db": 6.595565959196497,
+    "fm_snr_db": 11.435810365113817,
+    "bedrosian_ratio": 2.0,
+    "env_upper_hz": 400.0,
+    "car_lower_hz": 200.0
+  },
+  {
+    "beta": 0.05,
+    "am_depth": 0.7,
+    "am_snr_db": 73.32265379542085,
+    "fm_snr_db": 21.18115002504018,
+    "bedrosian_ratio": 0.4,
+    "env_upper_hz": 400.0,
+    "car_lower_hz": 1000.0
+  },
+  {
+    "beta": 0.25,
+    "am_depth": 0.7,
+    "am_snr_db": 46.27487770207025,
+    "fm_snr_db": 19.467476956007857,
+    "bedrosian_ratio": 0.6666666666666666,
+    "env_upper_hz": 400.0,
+    "car_lower_hz": 600.0
+  },
+  {
+    "beta": 0.5,
+    "am_depth": 0.7,
+    "am_snr_db": 35.543436113001604,
+    "fm_snr_db": 17.264930651398434,
+    "bedrosian_ratio": 0.6666666666666666,
+    "env_upper_hz": 400.0,
+    "car_lower_hz": 600.0
+  },
+  {
+    "beta": 0.75,
+    "am_depth": 0.7,
+    "am_snr_db": 30.034643518228037,
+    "fm_snr_db": 16.559435533437437,
+    "bedrosian_ratio": 0.6666666666666666,
+    "env_upper_hz": 400.0,
+    "car_lower_hz": 600.0
+  },
+  {
+    "beta": 1.0,
+    "am_depth": 0.7,
+    "am_snr_db": 26.858246877392105,
+    "fm_snr_db": 16.918017132631558,
+    "bedrosian_ratio": 2.0,
+    "env_upper_hz": 400.0,
+    "car_lower_hz": 200.0
+  },
+  {
+    "beta": 1.5,
+    "am_depth": 0.7,
+    "am_snr_db": 24.854262747849237,
+    "fm_snr_db": 19.538616055441935,
+    "bedrosian_ratio": 2.0,
+    "env_upper_hz": 400.0,
+    "car_lower_hz": 200.0
+  },
+  {
+    "beta": 2.0,
+    "am_depth": 0.7,
+    "am_snr_db": 29.034053917977513,
+    "fm_snr_db": 21.66145300291153,
+    "bedrosian_ratio": 2.0,
+    "env_upper_hz": 400.0,
+    "car_lower_hz": 200.0
+  },
+  {
+    "beta": 3.0,
+    "am_depth": 0.7,
+    "am_snr_db": 14.429985386636272,
+    "fm_snr_db": 16.74558064194231,
+    "bedrosian_ratio": 2.0,
+    "env_upper_hz": 400.0,
+    "car_lower_hz": 200.0
+  },
+  {
+    "beta": 0.05,
+    "am_depth": 0.9,
+    "am_snr_db": 73.27490188294705,
+    "fm_snr_db": 20.112957917147817,
+    "bedrosian_ratio": 0.4,
+    "env_upper_hz": 400.0,
+    "car_lower_hz": 1000.0
+  },
+  {
+    "beta": 0.25,
+    "am_depth": 0.9,
+    "am_snr_db": 46.00109516838404,
+    "fm_snr_db": 13.356957710560271,
+    "bedrosian_ratio": 0.6666666666666666,
+    "env_upper_hz": 400.0,
+    "car_lower_hz": 600.0
+  },
+  {
+    "beta": 0.5,
+    "am_depth": 0.9,
+    "am_snr_db": 34.901615503775176,
+    "fm_snr_db": 10.15926362522572,
+    "bedrosian_ratio": 0.6666666666666666,
+    "env_upper_hz": 400.0,
+    "car_lower_hz": 600.0
+  },
+  {
+    "beta": 0.75,
+    "am_depth": 0.9,
+    "am_snr_db": 28.923491583884932,
+    "fm_snr_db": 9.6462885462944,
+    "bedrosian_ratio": 0.6666666666666666,
+    "env_upper_hz": 400.0,
+    "car_lower_hz": 600.0
+  },
+  {
+    "beta": 1.0,
+    "am_depth": 0.9,
+    "am_snr_db": 25.14972410180699,
+    "fm_snr_db": 10.392829642067323,
+    "bedrosian_ratio": 2.0,
+    "env_upper_hz": 400.0,
+    "car_lower_hz": 200.0
+  },
+  {
+    "beta": 1.5,
+    "am_depth": 0.9,
+    "am_snr_db": 21.18902611777376,
+    "fm_snr_db": 13.956929862625927,
+    "bedrosian_ratio": 2.0,
+    "env_upper_hz": 400.0,
+    "car_lower_hz": 200.0
+  },
+  {
+    "beta": 2.0,
+    "am_depth": 0.9,
+    "am_snr_db": 20.534490033708046,
+    "fm_snr_db": 18.983665007073057,
+    "bedrosian_ratio": 2.0,
+    "env_upper_hz": 400.0,
+    "car_lower_hz": 200.0
+  },
+  {
+    "beta": 3.0,
+    "am_depth": 0.9,
+    "am_snr_db": 21.66591675758378,
+    "fm_snr_db": 20.112977054461687,
+    "bedrosian_ratio": 2.0,
+    "env_upper_hz": 400.0,
+    "car_lower_hz": 200.0
+  }
+]

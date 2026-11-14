@@ -1,0 +1,112 @@
+[
+  {
+    "beta": 0.05,
+    "recon_snr_db": 37.22079537164451,
+    "am_snr_db": 82.9503644884102,
+    "fm_snr_db": 21.282110910361247,
+    "bedrosian_ratio": 0.6666666666666666,
+    "env_upper_hz": 400.0,
+    "car_lower_hz": 600.0,
+    "bits": 0
+  },
+  {
+    "beta": 0.1,
+    "recon_snr_db": 37.22058502279341,
+    "am_snr_db": 71.21877490279915,
+    "fm_snr_db": 21.815351324020426,
+    "bedrosian_ratio": 2.0,
+    "env_upper_hz": 400.0,
+    "car_lower_hz": 200.0,
+    "bits": 0
+  },
+  {
+    "beta": 0.25,
+    "recon_snr_db": 37.22050968808279,
+    "am_snr_db": 56.302601094340694,
+    "fm_snr_db": 21.32077052975269,
+    "bedrosian_ratio": 2.0,
+    "env_upper_hz": 400.0,
+    "car_lower_hz": 200.0,
+    "bits": 0
+  },
+  {
+    "beta": 0.5,
+    "recon_snr_db": 37.22036907541127,
+    "am_snr_db": 46.240602546813705,
+    "fm_snr_db": 20.594924508851964,
+    "bedrosian_ratio": 2.0,
+    "env_upper_hz": 400.0,
+    "car_lower_hz": 200.0,
+    "bits": 0
+  },
+  {
+    "beta": 0.75,
+    "recon_snr_db": 37.22067889312245,
+    "am_snr_db": 41.68028208010638,
+    "fm_snr_db": 20.517040791551068,
+    "bedrosian_ratio": 2.0,
+    "env_upper_hz": 400.0,
+    "car_lower_hz": 200.0,
+    "bits": 0
+  },
+  {
+    "beta": 1.0,
+    "recon_snr_db": 37.22069858909682,
+    "am_snr_db": 39.971908331330575,
+    "fm_snr_db": 21.013026058058806,
+    "bedrosian_ratio": 2.0,
+    "env_upper_hz": 400.0,
+    "car_lower_hz": 200.0,
+    "bits": 0
+  },
+  {
+    "beta": 1.5,
+    "recon_snr_db": 37.2204526709679,
+    "am_snr_db": 46.79446465376544,
+    "fm_snr_db": 22.011601168644862,
+    "bedrosian_ratio": 2.0,
+    "env_upper_hz": 400.0,
+    "car_lower_hz": 200.0,
+    "bits": 0
+  },
+  {
+    "beta": 2.0,
+    "recon_snr_db": 37.22052649885539,
+    "am_snr_db": 29.434596988334036,
+    "fm_snr_db": 20.988446867585907,
+    "bedrosian_ratio": 4.0,
+    "env_upper_hz": 800.0,
+    "car_lower_hz": 200.0,
+    "bits": 0
+  },
+  {
+    "beta": 3.0,
+    "recon_snr_db": 37.22054431842164,
+    "am_snr_db": 13.833093265256567,
+    "fm_snr_db": 11.4358103644675,
+    "bedrosian_ratio": 10.0,
+    "env_upper_hz": 2000.0,
+    "car_lower_hz": 200.0,
+    "bits": 0
+  },
+  {
+    "beta": 4.0,
+    "recon_snr_db": 34.00770995667965,
+    "am_snr_db": 20.66961516247281,
+    "fm_snr_db": 5.164761780111125,
+    "bedrosian_ratio": 2.0,
+    "env_upper_hz": 1200.0,
+    "car_lower_hz": 600.0,
+    "bits": 0
+  },
+  {
+    "beta": 6.0,
+    "recon_snr_db": 34.00797244132698,
+    "am_snr_db": 14.283941745899407,
+    "fm_snr_db": 5.5299873495391765,
+    "bedrosian_ratio": 10.0,
+    "env_upper_hz": 2000.0,
+    "car_lower_hz": 200.0,
+    "bits": 0
+  }
+]

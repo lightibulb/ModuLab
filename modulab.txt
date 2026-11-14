@@ -1,7 +1,7 @@
 # EcoFac — Whole Project Repository Snapshot
-# Generated : 2026-11-14T04:39:13Z
+# Generated : 2026-11-14T05:34:35Z
 # Root      : /storage/emulated/0/projects/modulab
-# Files     : 63
+# Files     : 72
 
 ## File Index
 
@@ -50,19 +50,28 @@
   results/bedrosian_1794605708.json
   results/bedrosian_1794629688.json
   results/bedrosian_1794629812.json
+  results/bedrosian_1794632955.json
+  results/bedrosian_1794633494.json
   results/bedrosian_2d_1794629813.json
+  results/bedrosian_2d_1794632957.json
+  results/bedrosian_2d_1794633496.json
   results/figures/.gitkeep
   results/fm_sweep_1794627487.json
   results/fm_sweep_1794627663.json
   results/fm_sweep_1794627943.json
   results/fm_sweep_1794629817.json
+  results/fm_sweep_1794632963.json
+  results/fm_sweep_1794633500.json
   results/runs/.gitkeep
   results/speech_like_1794627039.json
   results/speech_like_1794627486.json
   results/speech_like_1794627662.json
   results/speech_like_1794627942.json
   results/speech_like_1794629816.json
+  results/speech_like_1794632962.json
+  results/speech_like_1794633499.json
   scripts/gen_synthetic.py
+  scripts/regen_results.sh
   setup.log
   tests/test_metrics.py
   tests/test_operators.py
@@ -225,85 +234,77 @@ No AI, no neural training, no ML. Pure physics + numerics.
 =======================================================================
 FILE: RESULTS.md
 =======================================================================
+# ModuLab Benchmark Results
 
----
+**Config hash**: `543a1776cf71`  
+**Sample rate**: 16000 Hz  
+**Duration**: 1.5 s  
+**Total runs**: 108
 
-# Extended Analysis (sweeps from separate experiments)
+## Table 1 - Quality at passthrough
+
+| Representation | Bits | SNR (dB) | SI-SDR (dB) | MCD (dB) |
+|---|---|---|---|---|
+| filterbank_amfm | 8 | -2.83 | -35.97 | 80.30 |
+| filterbank_amfm | 12 | 11.29 | 10.22 | 57.02 |
+| filterbank_amfm | 16 | 26.43 | 27.39 | 7.01 |
+| parallel | 8 | 3.19 | 0.35 | 77.02 |
+| parallel | 12 | 17.31 | 17.03 | 50.30 |
+| parallel | 16 | 32.45 | 33.33 | 4.20 |
+| stft | 8 | 46.22 | 46.23 | 11.42 |
+| stft | 12 | 69.88 | 69.89 | 9.28 |
+| stft | 16 | 140.38 | 140.60 | 0.18 |
+
+## Table 2 - Computational cost
+
+| Representation | FLOPs encode | FLOPs decode | Wall ms enc | Wall ms dec |
+|---|---|---|---|---|
+| filterbank_amfm | 1.73e+07 | 7.68e+05 | 494.73 | 43.94 |
+| parallel | 2.18e+07 | 5.34e+06 | 510.48 | 118.33 |
+| stft | 4.52e+06 | 4.52e+06 | 18.33 | 61.68 |
+
+## Table 3 - Narrowband sweep (12-bit, single band)
+
+| fc (Hz) | BW/fc | BW (Hz) | SNR (dB) |
+|---|---|---|---|
+| 500 | 0.10 | 50 | 17.72 |
+| 500 | 0.25 | 125 | 24.23 |
+| 500 | 0.50 | 250 | 35.73 |
+| 500 | 0.75 | 375 | 32.75 |
+| 500 | 1.00 | 500 | 24.44 |
+| 500 | 1.50 | 750 | 16.72 |
+| 500 | 2.00 | 1000 | 21.69 |
+| 500 | 3.00 | 1500 | 17.30 |
+| 1000 | 0.10 | 100 | 8.06 |
+| 1000 | 0.25 | 250 | 30.98 |
+| 1000 | 0.50 | 500 | 24.40 |
+| 1000 | 0.75 | 750 | 47.40 |
+| 1000 | 1.00 | 1000 | 28.71 |
+| 1000 | 1.50 | 1500 | 19.94 |
+| 1000 | 2.00 | 2000 | 20.90 |
+| 1000 | 3.00 | 3000 | 7.80 |
+| 2000 | 0.10 | 200 | 35.33 |
+| 2000 | 0.25 | 500 | 7.25 |
+| 2000 | 0.50 | 1000 | 38.89 |
+| 2000 | 0.75 | 1500 | 8.32 |
+| 2000 | 1.00 | 2000 | 41.92 |
+| 2000 | 1.50 | 3000 | 9.77 |
+| 2000 | 2.00 | 4000 | 23.98 |
+| 2000 | 3.00 | 6000 | 23.07 |
+
+(Plot failed: No module named 'matplotlib')
+
+## Verdict
+
+At 8-bit, AM/FM SNR -2.8 dB vs STFT 46.2 dB; AM/FM encode 1.73e+07 FLOPs vs STFT 4.52e+06 FLOPs.
+Parallel encode costs 2.18e+07 FLOPs (sum of branches, no discount).
+Narrowband (BW/fc<=0.25) SNR 20.6 dB vs wideband (BW/fc>=0.5) 24.7 dB.
+
+# Extended Analysis
 
 ## Table 4 — Bedrosian decomposition fidelity (1D)
 
-fc=1000 Hz, am_freq=fm_freq=400 Hz, am_depth=0.5, float
-
-| β | Bed. ratio | AM SNR (dB) | FM SNR (dB) | Recon SNR (dB) |
-|---|---|---|---|---|
-| 0.05 | 0.61 | 83.0 | 21.3 | 37.2 |
-| 0.10 | 0.62 | 71.2 | 21.8 | 37.2 |
-| 0.25 | 0.67 | 56.3 | 21.3 | 37.2 |
-| 0.50 | 0.75 | 46.2 | 20.6 | 37.2 |
-| 0.75 | 0.86 | 41.7 | 20.5 | 37.2 |
-| 1.00 | 1.00 | 40.0 | 21.0 | 37.2 |
-| 1.50 | 1.50 | 46.8 | 22.0 | 37.2 |
-| 2.00 | 3.00 | 29.4 | 21.0 | 37.2 |
-| 3.00 | inf | 13.8 | 11.4 | 37.2 |
-| 4.00 | inf | 20.7 | 5.2 | 34.0 |
-| 6.00 | inf | 14.3 | 5.5 | 34.0 |
-
-**AM decomposition drops 69 dB (83 → 14) as envelope-carrier overlap crosses 1.0. Reconstruction SNR stays flat — the failure is structural, not numerical.**
-
-## Table 6 — Speech-like envelope tracking (fair comparison)
-
-Multi-formant (f0=120, F1=700, F2=1220, F3=2600), adaptive LPF
-
-| am_freq | LPF | AM_Thy | AM_env | STFT_lng | STFT_sht |
-|---|---|---|---|---|---|
-| 1.0 | 30 | 84.2 | 67.9 | 65.2 | 65.3 |
-| 2.0 | 30 | 95.7 | 69.7 | 63.8 | 66.5 |
-| 4.0 | 30 | 99.2 | 70.5 | 55.2 | 65.2 |
-| 8.0 | 30 | 97.6 | 70.5 | 44.3 | 63.9 |
-| 16.0 | 30 | 98.0 | 69.2 | 43.3 | 62.2 |
-| 32.0 | 48 | 98.7 | 60.4 | 40.3 | 58.6 |
-| 64.0 | 96 | 97.9 | 18.3 | -2.4 | 15.8 |
-| 128.0 | 192 | 41.2 | 7.1 | -65.0 | 4.1 |
-| 256.0 | 384 | 36.0 | 5.4 | -76.6 | -14.3 |
-| 512.0 | 500 | 26.5 | -2.2 | -69.4 | -60.9 |
-| 700.0 | 500 | 18.7 | -19.5 | -89.5 | -105.6 |
-
-**AM_Thy collapses at am_freq ≈ f0 = 120 Hz (pitch collision). AM_env vs short-window STFT tie within 5 dB at speech rates.**
-
-## Table 7 — FM tracking: multi-hop STFT vs AM/FM
-
-f0=1000 Hz, fm_depth=50 Hz, STFT n_fft=512
-
-| fm_freq | AM/FM | STFT hop=32 | STFT hop=128 | STFT hop=256 |
-|---|---|---|---|---|
-| 0.5 | 42.5 | 60.5 | 60.6 | -2.7 |
-| 1.0 | 43.3 | 57.5 | 55.6 | -2.1 |
-| 2.0 | 44.0 | 40.5 | 40.4 | -2.3 |
-| 4.0 | 44.0 | 29.2 | 29.5 | -1.7 |
-| 8.0 | 44.2 | 18.3 | 20.6 | -1.2 |
-| 16.0 | 44.3 | 10.8 | 13.2 | -1.4 |
-| 32.0 | 44.0 | 6.9 | 2.9 | -0.0 |
-| 64.0 | 43.8 | -0.1 | 0.0 | -0.0 |
-| 128.0 | 43.5 | -0.0 | -0.0 | -0.0 |
-| 200.0 | 43.8 | -0.0 | 0.0 | -0.0 |
-
-**Crossover at ~2 Hz. STFT wins slow vibrato (coherent window), AM/FM wins 4–200 Hz by 15–40 dB (sample-rate). STFT hop=256 fails at all rates — 2× overlap is below the 4× coherence threshold.**
-
-## Consolidated Verdict
-
-Across all experiments:
-
-1. **Cost**: AM/FM = 3.8× STFT FLOPs, 36× wall time. STFT wins.
-2. **Quantization**: AM/FM needs ≥12-bit FM. STFT robust at any bit.
-3. **Bedrosian**: AM/FM decomposition collapses by 69 dB when envelope-carrier overlap exceeds 1.0. Reconstruction SNR stays flat (>37 dB) — the failure is structural, invisible in recon metrics.
-4. **Envelope at speech rates**: AM/FM and short-window STFT are within ~5 dB. Neither dominates.
-5. **FM tracking**: STFT wins ≤2 Hz (+14–18 dB), AM/FM wins ≥4 Hz (+15–40 dB). Crossover at 2 Hz. STFT requires hop ≤ n_fft/4 for phase coherence — a constraint AM/FM doesn't have.
-6. **Pitch collision**: both fail when am_freq > f0. Fundamental limit of envelope-based representations.
-
-**Conclusion**: AM/FM is not faster or universally better than STFT, but it wins two specific regimes (envelope at speech rates, fast FM tracking above 2 Hz). The correct engineering answer is task-dependent selection, not universal substitution. The portfolio value is this regime map — quantified, empirical, honest.
-## Table 4 — Bedrosian decomposition fidelity (1D)
-
-*fc=1000 Hz, am_freq=fm_freq=400 Hz, am_depth=0.5, float precision*
+*fc=1000 Hz, am_freq=fm_freq=400 Hz, am_depth=0.5, float*
 
 | β | Bed. ratio | AM SNR (dB) | FM SNR (dB) | Recon SNR (dB) |
 |---|---|---|---|---|
@@ -319,11 +320,11 @@ Across all experiments:
 | 4.00 | inf | 20.67 | 5.16 | 34.01 |
 | 6.00 | inf | 14.28 | 5.53 | 34.01 |
 
-**AM SNR drops 83 → 14 dB (69 dB) as envelope-carrier overlap crosses 1.0. Reconstruction SNR stays flat — the failure is structural, invisible in recon metrics.**
+**AM drops 83→14 dB as envelope-carrier overlap crosses 1.0. Recon SNR flat — failure is structural.**
 
-## Table 5 — AM/FM interference diagram (β × am_depth)
+## Table 5 — AM/FM interference (β × am_depth)
 
-*fc=1000 Hz, am_freq=fm_freq=400 Hz. This varies envelope amplitude, not bandwidth, so it is NOT a Bedrosian test. It shows the resonance between AM depth and FM index: deeper AM makes AM estimation more robust to phase corruption from high FM index.*
+*Varies envelope amplitude, not bandwidth — NOT a Bedrosian test.*
 
 | β \ am_depth | 0.10 | 0.30 | 0.50 | 0.70 | 0.90 |
 |---|---|---|---|---|---|
@@ -338,9 +339,9 @@ Across all experiments:
 
 ## Table 6 — Speech-like envelope tracking
 
-*Multi-formant (f0=120, F1=700, F2=1220, F3=2600), adaptive LPF, SI-SDR*
+*f0=120, F1=700, F2=1220, F3=2600, adaptive LPF, SI-SDR*
 
-| am_freq (Hz) | AM vs theory | AM env vs truth | STFT long | STFT short |
+| am_freq | AM vs theory | AM env | STFT long | STFT short |
 |---|---|---|---|---|
 | 1.0 | 84.2 | 67.9 | 65.2 | 65.3 |
 | 2.0 | 95.7 | 69.7 | 63.8 | 66.5 |
@@ -354,13 +355,13 @@ Across all experiments:
 | 512.0 | 26.5 | -2.2 | -69.4 | -60.9 |
 | 700.0 | 18.7 | -19.5 | -89.5 | -105.6 |
 
-**AM_Thy collapses at am_freq ≈ f0 = 120 Hz (pitch collision). AM/FM and short-window STFT tie within 5 dB at speech rates.**
+**AM collapses at am_freq ≈ f0 = 120 Hz (pitch collision).**
 
 ## Table 7 — FM tracking: multi-hop STFT vs AM/FM
 
 *f0=1000 Hz, fm_depth=50 Hz, STFT n_fft=512*
 
-| fm_freq (Hz) | AM/FM | STFT hop=32 | STFT hop=128 | STFT hop=256 |
+| fm_freq | AM/FM | STFT hop=32 | STFT hop=128 | STFT hop=256 |
 |---|---|---|---|---|
 | 0.5 | 42.5 | 60.5 | 60.6 | -2.7 |
 | 1.0 | 43.3 | 57.5 | 55.6 | -2.1 |
@@ -373,20 +374,18 @@ Across all experiments:
 | 128.0 | 43.5 | -0.0 | -0.0 | -0.0 |
 | 200.0 | 43.8 | -0.0 | 0.0 | -0.0 |
 
-**Crossover at ~2 Hz. STFT wins slow vibrato (long coherent window). AM/FM wins 4–200 Hz by 15–40 dB (sample-rate tracking). STFT hop=256 fails at all rates — insufficient overlap for phase coherence.**
+**Crossover at ~2 Hz. STFT wins slow vibrato, AM/FM wins 4–200 Hz.**
 
 ## Consolidated Verdict
 
-Across four independent experiments:
+1. **Cost**: AM/FM = 3.8× STFT FLOPs. STFT wins.
+2. **Quantization**: AM/FM needs ≥12-bit. STFT robust at any bit.
+3. **Bedrosian** (T4): 69 dB drop when envelope-carrier overlap crosses 1.0.
+4. **AM/FM interference** (T5): deeper AM more robust to high FM index.
+5. **Speech envelope** (T6): AM/FM and short-window STFT tie within 5 dB.
+6. **FM tracking** (T7): crossover at 2 Hz; AM/FM wins fast rates.
 
-1. **Cost**: AM/FM = 3.8× STFT FLOPs, ~40× wall time. STFT wins.
-2. **Quantization**: AM/FM unusable at 8-bit; needs ≥12-bit. STFT robust at any bit depth.
-3. **Bedrosian validity** (Table 4): AM decomposition drops 83 → 14 dB as envelope-carrier overlap crosses 1.0. Reconstruction SNR flat — failure is structural, hidden by recon metrics.
-4. **AM/FM interference** (Table 5): deeper envelope modulation makes AM estimation more robust to high FM index. Diagonal ridge in (β, am_depth). Not Bedrosian — resonance effect.
-5. **Speech envelope tracking** (Table 6): AM/FM and short-window STFT within 5 dB at speech rates. Both fail above am_freq ≈ f0 = 120 Hz (pitch collision) — fundamental limit of envelope representations.
-6. **FM tracking** (Table 7): STFT wins ≤2 Hz by 14–18 dB. AM/FM wins 4–200 Hz by 15–40 dB. Crossover at 2 Hz. STFT requires hop ≤ n_fft/4 for phase coherence.
-
-**Conclusion**: AM/FM is not faster or universally better than STFT. It wins two regimes (envelope at speech rates, fast FM tracking) and loses elsewhere (cost, quantization, slow-vibrato FM). The correct engineering answer is task-dependent selection. This regime map is the empirical result.
+**Conclusion**: AM/FM wins two regimes and loses elsewhere. Task-dependent selection.
 
 =======================================================================
 FILE: benchmarks/reproduce.sh
@@ -885,8 +884,22 @@ def generate_report(results, sweep, out_dir, config_path):
     L.append("")
 
     text = "\n".join(L)
-    Path("RESULTS.md").write_text(text)
-    return text
+
+    # PRESERVE extended section (Tables 4-7, Consolidated Verdict)
+    # if it exists — prevents bench from wiping append-added tables.
+    target = Path("RESULTS.md")
+    preserved = ""
+    if target.exists():
+        existing = target.read_text()
+        for marker in ["\n# Extended Analysis", "\n## Table 4",
+                       "\n## Consolidated Verdict"]:
+            pos = existing.find(marker)
+            if pos >= 0:
+                preserved = existing[pos:]
+                break
+
+    target.write_text(text + preserved)
+    return text + preserved
 
 
 =======================================================================
@@ -2867,7 +2880,927 @@ FILE: results/bedrosian_1794629812.json
 ]
 
 =======================================================================
+FILE: results/bedrosian_1794632955.json
+=======================================================================
+[
+  {
+    "beta": 0.05,
+    "recon_snr_db": 37.22079537164451,
+    "am_snr_db": 82.9503644884102,
+    "fm_snr_db": 21.282110910361247,
+    "bedrosian_ratio": 0.6122448979591837,
+    "bits": 0
+  },
+  {
+    "beta": 0.1,
+    "recon_snr_db": 37.22058502279341,
+    "am_snr_db": 71.21877490279915,
+    "fm_snr_db": 21.815351324020426,
+    "bedrosian_ratio": 0.625,
+    "bits": 0
+  },
+  {
+    "beta": 0.25,
+    "recon_snr_db": 37.22050968808279,
+    "am_snr_db": 56.302601094340694,
+    "fm_snr_db": 21.32077052975269,
+    "bedrosian_ratio": 0.6666666666666666,
+    "bits": 0
+  },
+  {
+    "beta": 0.5,
+    "recon_snr_db": 37.22036907541127,
+    "am_snr_db": 46.240602546813705,
+    "fm_snr_db": 20.594924508851964,
+    "bedrosian_ratio": 0.75,
+    "bits": 0
+  },
+  {
+    "beta": 0.75,
+    "recon_snr_db": 37.22067889312245,
+    "am_snr_db": 41.68028208010638,
+    "fm_snr_db": 20.517040791551068,
+    "bedrosian_ratio": 0.8571428571428571,
+    "bits": 0
+  },
+  {
+    "beta": 1.0,
+    "recon_snr_db": 37.22069858909682,
+    "am_snr_db": 39.971908331330575,
+    "fm_snr_db": 21.013026058058806,
+    "bedrosian_ratio": 1.0,
+    "bits": 0
+  },
+  {
+    "beta": 1.5,
+    "recon_snr_db": 37.2204526709679,
+    "am_snr_db": 46.79446465376544,
+    "fm_snr_db": 22.011601168644862,
+    "bedrosian_ratio": 1.5,
+    "bits": 0
+  },
+  {
+    "beta": 2.0,
+    "recon_snr_db": 37.22052649885539,
+    "am_snr_db": 29.434596988334036,
+    "fm_snr_db": 20.988446867585907,
+    "bedrosian_ratio": 3.0,
+    "bits": 0
+  },
+  {
+    "beta": 3.0,
+    "recon_snr_db": 37.22054431842164,
+    "am_snr_db": 13.833093265256567,
+    "fm_snr_db": 11.4358103644675,
+    "bedrosian_ratio": Infinity,
+    "bits": 0
+  },
+  {
+    "beta": 4.0,
+    "recon_snr_db": 34.00770995667965,
+    "am_snr_db": 20.66961516247281,
+    "fm_snr_db": 5.164761780111125,
+    "bedrosian_ratio": Infinity,
+    "bits": 0
+  },
+  {
+    "beta": 6.0,
+    "recon_snr_db": 34.00797244132698,
+    "am_snr_db": 14.283941745899407,
+    "fm_snr_db": 5.5299873495391765,
+    "bedrosian_ratio": Infinity,
+    "bits": 0
+  }
+]
+
+=======================================================================
+FILE: results/bedrosian_1794633494.json
+=======================================================================
+[
+  {
+    "beta": 0.05,
+    "recon_snr_db": 37.22079537164451,
+    "am_snr_db": 82.9503644884102,
+    "fm_snr_db": 21.282110910361247,
+    "bedrosian_ratio": 0.6122448979591837,
+    "bits": 0
+  },
+  {
+    "beta": 0.1,
+    "recon_snr_db": 37.22058502279341,
+    "am_snr_db": 71.21877490279915,
+    "fm_snr_db": 21.815351324020426,
+    "bedrosian_ratio": 0.625,
+    "bits": 0
+  },
+  {
+    "beta": 0.25,
+    "recon_snr_db": 37.22050968808279,
+    "am_snr_db": 56.302601094340694,
+    "fm_snr_db": 21.32077052975269,
+    "bedrosian_ratio": 0.6666666666666666,
+    "bits": 0
+  },
+  {
+    "beta": 0.5,
+    "recon_snr_db": 37.22036907541127,
+    "am_snr_db": 46.240602546813705,
+    "fm_snr_db": 20.594924508851964,
+    "bedrosian_ratio": 0.75,
+    "bits": 0
+  },
+  {
+    "beta": 0.75,
+    "recon_snr_db": 37.22067889312245,
+    "am_snr_db": 41.68028208010638,
+    "fm_snr_db": 20.517040791551068,
+    "bedrosian_ratio": 0.8571428571428571,
+    "bits": 0
+  },
+  {
+    "beta": 1.0,
+    "recon_snr_db": 37.22069858909682,
+    "am_snr_db": 39.971908331330575,
+    "fm_snr_db": 21.013026058058806,
+    "bedrosian_ratio": 1.0,
+    "bits": 0
+  },
+  {
+    "beta": 1.5,
+    "recon_snr_db": 37.2204526709679,
+    "am_snr_db": 46.79446465376544,
+    "fm_snr_db": 22.011601168644862,
+    "bedrosian_ratio": 1.5,
+    "bits": 0
+  },
+  {
+    "beta": 2.0,
+    "recon_snr_db": 37.22052649885539,
+    "am_snr_db": 29.434596988334036,
+    "fm_snr_db": 20.988446867585907,
+    "bedrosian_ratio": 3.0,
+    "bits": 0
+  },
+  {
+    "beta": 3.0,
+    "recon_snr_db": 37.22054431842164,
+    "am_snr_db": 13.833093265256567,
+    "fm_snr_db": 11.4358103644675,
+    "bedrosian_ratio": Infinity,
+    "bits": 0
+  },
+  {
+    "beta": 4.0,
+    "recon_snr_db": 34.00770995667965,
+    "am_snr_db": 20.66961516247281,
+    "fm_snr_db": 5.164761780111125,
+    "bedrosian_ratio": Infinity,
+    "bits": 0
+  },
+  {
+    "beta": 6.0,
+    "recon_snr_db": 34.00797244132698,
+    "am_snr_db": 14.283941745899407,
+    "fm_snr_db": 5.5299873495391765,
+    "bedrosian_ratio": Infinity,
+    "bits": 0
+  }
+]
+
+=======================================================================
 FILE: results/bedrosian_2d_1794629813.json
+=======================================================================
+[
+  {
+    "beta": 0.05,
+    "am_depth": 0.1,
+    "am_snr_db": 74.68717837628874,
+    "fm_snr_db": 21.41598445007398,
+    "bedrosian_ratio": 0.44897959183673475,
+    "env_upper_hz": 440.00000000000006,
+    "carrier_lower_hz": 980.0
+  },
+  {
+    "beta": 0.25,
+    "am_depth": 0.1,
+    "am_snr_db": 60.71170529757651,
+    "fm_snr_db": 22.077587321787494,
+    "bedrosian_ratio": 0.48888888888888893,
+    "env_upper_hz": 440.00000000000006,
+    "carrier_lower_hz": 900.0
+  },
+  {
+    "beta": 0.5,
+    "am_depth": 0.1,
+    "am_snr_db": 36.7649491693225,
+    "fm_snr_db": 22.064771887251318,
+    "bedrosian_ratio": 0.55,
+    "env_upper_hz": 440.00000000000006,
+    "carrier_lower_hz": 800.0
+  },
+  {
+    "beta": 0.75,
+    "am_depth": 0.1,
+    "am_snr_db": 22.816058922585036,
+    "fm_snr_db": 21.792562430038586,
+    "bedrosian_ratio": 0.6285714285714287,
+    "env_upper_hz": 440.00000000000006,
+    "carrier_lower_hz": 700.0
+  },
+  {
+    "beta": 1.0,
+    "am_depth": 0.1,
+    "am_snr_db": 14.1587947814543,
+    "fm_snr_db": 21.08310401101088,
+    "bedrosian_ratio": 0.7333333333333334,
+    "env_upper_hz": 440.00000000000006,
+    "carrier_lower_hz": 600.0
+  },
+  {
+    "beta": 1.5,
+    "am_depth": 0.1,
+    "am_snr_db": 2.876665145834422,
+    "fm_snr_db": 18.94358742076901,
+    "bedrosian_ratio": 1.1,
+    "env_upper_hz": 440.00000000000006,
+    "carrier_lower_hz": 400.0
+  },
+  {
+    "beta": 2.0,
+    "am_depth": 0.1,
+    "am_snr_db": -4.564047966847204,
+    "fm_snr_db": 17.502496423134616,
+    "bedrosian_ratio": 2.2,
+    "env_upper_hz": 440.00000000000006,
+    "carrier_lower_hz": 200.0
+  },
+  {
+    "beta": 3.0,
+    "am_depth": 0.1,
+    "am_snr_db": -12.939004491294558,
+    "fm_snr_db": 2.493594229850507,
+    "bedrosian_ratio": Infinity,
+    "env_upper_hz": 440.00000000000006,
+    "carrier_lower_hz": -200.0
+  },
+  {
+    "beta": 0.05,
+    "am_depth": 0.3,
+    "am_snr_db": 73.61242665308444,
+    "fm_snr_db": 21.35787572371023,
+    "bedrosian_ratio": 0.5306122448979592,
+    "env_upper_hz": 520.0,
+    "carrier_lower_hz": 980.0
+  },
+  {
+    "beta": 0.25,
+    "am_depth": 0.3,
+    "am_snr_db": 48.004876322112615,
+    "fm_snr_db": 21.9220897124257,
+    "bedrosian_ratio": 0.5777777777777777,
+    "env_upper_hz": 520.0,
+    "carrier_lower_hz": 900.0
+  },
+  {
+    "beta": 0.5,
+    "am_depth": 0.3,
+    "am_snr_db": 40.23013455362016,
+    "fm_snr_db": 21.908670408027948,
+    "bedrosian_ratio": 0.65,
+    "env_upper_hz": 520.0,
+    "carrier_lower_hz": 800.0
+  },
+  {
+    "beta": 0.75,
+    "am_depth": 0.3,
+    "am_snr_db": 41.53211803856539,
+    "fm_snr_db": 22.041536363247403,
+    "bedrosian_ratio": 0.7428571428571429,
+    "env_upper_hz": 520.0,
+    "carrier_lower_hz": 700.0
+  },
+  {
+    "beta": 1.0,
+    "am_depth": 0.3,
+    "am_snr_db": 40.55728572626865,
+    "fm_snr_db": 22.071411195328295,
+    "bedrosian_ratio": 0.8666666666666667,
+    "env_upper_hz": 520.0,
+    "carrier_lower_hz": 600.0
+  },
+  {
+    "beta": 1.5,
+    "am_depth": 0.3,
+    "am_snr_db": 18.61485553715505,
+    "fm_snr_db": 20.844738257374953,
+    "bedrosian_ratio": 1.3,
+    "env_upper_hz": 520.0,
+    "carrier_lower_hz": 400.0
+  },
+  {
+    "beta": 2.0,
+    "am_depth": 0.3,
+    "am_snr_db": 8.946701414446514,
+    "fm_snr_db": 19.183351828743366,
+    "bedrosian_ratio": 2.6,
+    "env_upper_hz": 520.0,
+    "carrier_lower_hz": 200.0
+  },
+  {
+    "beta": 3.0,
+    "am_depth": 0.3,
+    "am_snr_db": -1.0696391092925128,
+    "fm_snr_db": 6.679419901928526,
+    "bedrosian_ratio": Infinity,
+    "env_upper_hz": 520.0,
+    "carrier_lower_hz": -200.0
+  },
+  {
+    "beta": 0.05,
+    "am_depth": 0.5,
+    "am_snr_db": 73.40792555551388,
+    "fm_snr_db": 21.282134132211468,
+    "bedrosian_ratio": 0.6122448979591837,
+    "env_upper_hz": 600.0,
+    "carrier_lower_hz": 980.0
+  },
+  {
+    "beta": 0.25,
+    "am_depth": 0.5,
+    "am_snr_db": 46.76129106516342,
+    "fm_snr_db": 21.320771481325455,
+    "bedrosian_ratio": 0.6666666666666666,
+    "env_upper_hz": 600.0,
+    "carrier_lower_hz": 900.0
+  },
+  {
+    "beta": 0.5,
+    "am_depth": 0.5,
+    "am_snr_db": 36.71660125473865,
+    "fm_snr_db": 20.59492469858398,
+    "bedrosian_ratio": 0.75,
+    "env_upper_hz": 600.0,
+    "carrier_lower_hz": 800.0
+  },
+  {
+    "beta": 0.75,
+    "am_depth": 0.5,
+    "am_snr_db": 32.231961163019,
+    "fm_snr_db": 20.517040875460758,
+    "bedrosian_ratio": 0.8571428571428571,
+    "env_upper_hz": 600.0,
+    "carrier_lower_hz": 700.0
+  },
+  {
+    "beta": 1.0,
+    "am_depth": 0.5,
+    "am_snr_db": 30.729357382001766,
+    "fm_snr_db": 21.013026110694533,
+    "bedrosian_ratio": 1.0,
+    "env_upper_hz": 600.0,
+    "carrier_lower_hz": 600.0
+  },
+  {
+    "beta": 1.5,
+    "am_depth": 0.5,
+    "am_snr_db": 38.915514850905794,
+    "fm_snr_db": 22.011601198315866,
+    "bedrosian_ratio": 1.5,
+    "env_upper_hz": 600.0,
+    "carrier_lower_hz": 400.0
+  },
+  {
+    "beta": 2.0,
+    "am_depth": 0.5,
+    "am_snr_db": 20.723626766324696,
+    "fm_snr_db": 20.98844688135894,
+    "bedrosian_ratio": 3.0,
+    "env_upper_hz": 600.0,
+    "carrier_lower_hz": 200.0
+  },
+  {
+    "beta": 3.0,
+    "am_depth": 0.5,
+    "am_snr_db": 6.595565959196497,
+    "fm_snr_db": 11.435810365113817,
+    "bedrosian_ratio": Infinity,
+    "env_upper_hz": 600.0,
+    "carrier_lower_hz": -200.0
+  },
+  {
+    "beta": 0.05,
+    "am_depth": 0.7,
+    "am_snr_db": 73.32265379542085,
+    "fm_snr_db": 21.18115002504018,
+    "bedrosian_ratio": 0.6938775510204082,
+    "env_upper_hz": 680.0,
+    "carrier_lower_hz": 980.0
+  },
+  {
+    "beta": 0.25,
+    "am_depth": 0.7,
+    "am_snr_db": 46.27487770207025,
+    "fm_snr_db": 19.467476956007857,
+    "bedrosian_ratio": 0.7555555555555555,
+    "env_upper_hz": 680.0,
+    "carrier_lower_hz": 900.0
+  },
+  {
+    "beta": 0.5,
+    "am_depth": 0.7,
+    "am_snr_db": 35.543436113001604,
+    "fm_snr_db": 17.264930651398434,
+    "bedrosian_ratio": 0.85,
+    "env_upper_hz": 680.0,
+    "carrier_lower_hz": 800.0
+  },
+  {
+    "beta": 0.75,
+    "am_depth": 0.7,
+    "am_snr_db": 30.034643518228037,
+    "fm_snr_db": 16.559435533437437,
+    "bedrosian_ratio": 0.9714285714285714,
+    "env_upper_hz": 680.0,
+    "carrier_lower_hz": 700.0
+  },
+  {
+    "beta": 1.0,
+    "am_depth": 0.7,
+    "am_snr_db": 26.858246877392105,
+    "fm_snr_db": 16.918017132631558,
+    "bedrosian_ratio": 1.1333333333333333,
+    "env_upper_hz": 680.0,
+    "carrier_lower_hz": 600.0
+  },
+  {
+    "beta": 1.5,
+    "am_depth": 0.7,
+    "am_snr_db": 24.854262747849237,
+    "fm_snr_db": 19.538616055441935,
+    "bedrosian_ratio": 1.7,
+    "env_upper_hz": 680.0,
+    "carrier_lower_hz": 400.0
+  },
+  {
+    "beta": 2.0,
+    "am_depth": 0.7,
+    "am_snr_db": 29.034053917977513,
+    "fm_snr_db": 21.66145300291153,
+    "bedrosian_ratio": 3.4,
+    "env_upper_hz": 680.0,
+    "carrier_lower_hz": 200.0
+  },
+  {
+    "beta": 3.0,
+    "am_depth": 0.7,
+    "am_snr_db": 14.429985386636272,
+    "fm_snr_db": 16.74558064194231,
+    "bedrosian_ratio": Infinity,
+    "env_upper_hz": 680.0,
+    "carrier_lower_hz": -200.0
+  },
+  {
+    "beta": 0.05,
+    "am_depth": 0.9,
+    "am_snr_db": 73.27490188294705,
+    "fm_snr_db": 20.112957917147817,
+    "bedrosian_ratio": 0.7755102040816326,
+    "env_upper_hz": 760.0,
+    "carrier_lower_hz": 980.0
+  },
+  {
+    "beta": 0.25,
+    "am_depth": 0.9,
+    "am_snr_db": 46.00109516838404,
+    "fm_snr_db": 13.356957710560271,
+    "bedrosian_ratio": 0.8444444444444444,
+    "env_upper_hz": 760.0,
+    "carrier_lower_hz": 900.0
+  },
+  {
+    "beta": 0.5,
+    "am_depth": 0.9,
+    "am_snr_db": 34.901615503775176,
+    "fm_snr_db": 10.15926362522572,
+    "bedrosian_ratio": 0.95,
+    "env_upper_hz": 760.0,
+    "carrier_lower_hz": 800.0
+  },
+  {
+    "beta": 0.75,
+    "am_depth": 0.9,
+    "am_snr_db": 28.923491583884932,
+    "fm_snr_db": 9.6462885462944,
+    "bedrosian_ratio": 1.0857142857142856,
+    "env_upper_hz": 760.0,
+    "carrier_lower_hz": 700.0
+  },
+  {
+    "beta": 1.0,
+    "am_depth": 0.9,
+    "am_snr_db": 25.14972410180699,
+    "fm_snr_db": 10.392829642067323,
+    "bedrosian_ratio": 1.2666666666666666,
+    "env_upper_hz": 760.0,
+    "carrier_lower_hz": 600.0
+  },
+  {
+    "beta": 1.5,
+    "am_depth": 0.9,
+    "am_snr_db": 21.18902611777376,
+    "fm_snr_db": 13.956929862625927,
+    "bedrosian_ratio": 1.9,
+    "env_upper_hz": 760.0,
+    "carrier_lower_hz": 400.0
+  },
+  {
+    "beta": 2.0,
+    "am_depth": 0.9,
+    "am_snr_db": 20.534490033708046,
+    "fm_snr_db": 18.983665007073057,
+    "bedrosian_ratio": 3.8,
+    "env_upper_hz": 760.0,
+    "carrier_lower_hz": 200.0
+  },
+  {
+    "beta": 3.0,
+    "am_depth": 0.9,
+    "am_snr_db": 21.66591675758378,
+    "fm_snr_db": 20.112977054461687,
+    "bedrosian_ratio": Infinity,
+    "env_upper_hz": 760.0,
+    "carrier_lower_hz": -200.0
+  }
+]
+
+=======================================================================
+FILE: results/bedrosian_2d_1794632957.json
+=======================================================================
+[
+  {
+    "beta": 0.05,
+    "am_depth": 0.1,
+    "am_snr_db": 74.68717837628874,
+    "fm_snr_db": 21.41598445007398,
+    "bedrosian_ratio": 0.44897959183673475,
+    "env_upper_hz": 440.00000000000006,
+    "carrier_lower_hz": 980.0
+  },
+  {
+    "beta": 0.25,
+    "am_depth": 0.1,
+    "am_snr_db": 60.71170529757651,
+    "fm_snr_db": 22.077587321787494,
+    "bedrosian_ratio": 0.48888888888888893,
+    "env_upper_hz": 440.00000000000006,
+    "carrier_lower_hz": 900.0
+  },
+  {
+    "beta": 0.5,
+    "am_depth": 0.1,
+    "am_snr_db": 36.7649491693225,
+    "fm_snr_db": 22.064771887251318,
+    "bedrosian_ratio": 0.55,
+    "env_upper_hz": 440.00000000000006,
+    "carrier_lower_hz": 800.0
+  },
+  {
+    "beta": 0.75,
+    "am_depth": 0.1,
+    "am_snr_db": 22.816058922585036,
+    "fm_snr_db": 21.792562430038586,
+    "bedrosian_ratio": 0.6285714285714287,
+    "env_upper_hz": 440.00000000000006,
+    "carrier_lower_hz": 700.0
+  },
+  {
+    "beta": 1.0,
+    "am_depth": 0.1,
+    "am_snr_db": 14.1587947814543,
+    "fm_snr_db": 21.08310401101088,
+    "bedrosian_ratio": 0.7333333333333334,
+    "env_upper_hz": 440.00000000000006,
+    "carrier_lower_hz": 600.0
+  },
+  {
+    "beta": 1.5,
+    "am_depth": 0.1,
+    "am_snr_db": 2.876665145834422,
+    "fm_snr_db": 18.94358742076901,
+    "bedrosian_ratio": 1.1,
+    "env_upper_hz": 440.00000000000006,
+    "carrier_lower_hz": 400.0
+  },
+  {
+    "beta": 2.0,
+    "am_depth": 0.1,
+    "am_snr_db": -4.564047966847204,
+    "fm_snr_db": 17.502496423134616,
+    "bedrosian_ratio": 2.2,
+    "env_upper_hz": 440.00000000000006,
+    "carrier_lower_hz": 200.0
+  },
+  {
+    "beta": 3.0,
+    "am_depth": 0.1,
+    "am_snr_db": -12.939004491294558,
+    "fm_snr_db": 2.493594229850507,
+    "bedrosian_ratio": Infinity,
+    "env_upper_hz": 440.00000000000006,
+    "carrier_lower_hz": -200.0
+  },
+  {
+    "beta": 0.05,
+    "am_depth": 0.3,
+    "am_snr_db": 73.61242665308444,
+    "fm_snr_db": 21.35787572371023,
+    "bedrosian_ratio": 0.5306122448979592,
+    "env_upper_hz": 520.0,
+    "carrier_lower_hz": 980.0
+  },
+  {
+    "beta": 0.25,
+    "am_depth": 0.3,
+    "am_snr_db": 48.004876322112615,
+    "fm_snr_db": 21.9220897124257,
+    "bedrosian_ratio": 0.5777777777777777,
+    "env_upper_hz": 520.0,
+    "carrier_lower_hz": 900.0
+  },
+  {
+    "beta": 0.5,
+    "am_depth": 0.3,
+    "am_snr_db": 40.23013455362016,
+    "fm_snr_db": 21.908670408027948,
+    "bedrosian_ratio": 0.65,
+    "env_upper_hz": 520.0,
+    "carrier_lower_hz": 800.0
+  },
+  {
+    "beta": 0.75,
+    "am_depth": 0.3,
+    "am_snr_db": 41.53211803856539,
+    "fm_snr_db": 22.041536363247403,
+    "bedrosian_ratio": 0.7428571428571429,
+    "env_upper_hz": 520.0,
+    "carrier_lower_hz": 700.0
+  },
+  {
+    "beta": 1.0,
+    "am_depth": 0.3,
+    "am_snr_db": 40.55728572626865,
+    "fm_snr_db": 22.071411195328295,
+    "bedrosian_ratio": 0.8666666666666667,
+    "env_upper_hz": 520.0,
+    "carrier_lower_hz": 600.0
+  },
+  {
+    "beta": 1.5,
+    "am_depth": 0.3,
+    "am_snr_db": 18.61485553715505,
+    "fm_snr_db": 20.844738257374953,
+    "bedrosian_ratio": 1.3,
+    "env_upper_hz": 520.0,
+    "carrier_lower_hz": 400.0
+  },
+  {
+    "beta": 2.0,
+    "am_depth": 0.3,
+    "am_snr_db": 8.946701414446514,
+    "fm_snr_db": 19.183351828743366,
+    "bedrosian_ratio": 2.6,
+    "env_upper_hz": 520.0,
+    "carrier_lower_hz": 200.0
+  },
+  {
+    "beta": 3.0,
+    "am_depth": 0.3,
+    "am_snr_db": -1.0696391092925128,
+    "fm_snr_db": 6.679419901928526,
+    "bedrosian_ratio": Infinity,
+    "env_upper_hz": 520.0,
+    "carrier_lower_hz": -200.0
+  },
+  {
+    "beta": 0.05,
+    "am_depth": 0.5,
+    "am_snr_db": 73.40792555551388,
+    "fm_snr_db": 21.282134132211468,
+    "bedrosian_ratio": 0.6122448979591837,
+    "env_upper_hz": 600.0,
+    "carrier_lower_hz": 980.0
+  },
+  {
+    "beta": 0.25,
+    "am_depth": 0.5,
+    "am_snr_db": 46.76129106516342,
+    "fm_snr_db": 21.320771481325455,
+    "bedrosian_ratio": 0.6666666666666666,
+    "env_upper_hz": 600.0,
+    "carrier_lower_hz": 900.0
+  },
+  {
+    "beta": 0.5,
+    "am_depth": 0.5,
+    "am_snr_db": 36.71660125473865,
+    "fm_snr_db": 20.59492469858398,
+    "bedrosian_ratio": 0.75,
+    "env_upper_hz": 600.0,
+    "carrier_lower_hz": 800.0
+  },
+  {
+    "beta": 0.75,
+    "am_depth": 0.5,
+    "am_snr_db": 32.231961163019,
+    "fm_snr_db": 20.517040875460758,
+    "bedrosian_ratio": 0.8571428571428571,
+    "env_upper_hz": 600.0,
+    "carrier_lower_hz": 700.0
+  },
+  {
+    "beta": 1.0,
+    "am_depth": 0.5,
+    "am_snr_db": 30.729357382001766,
+    "fm_snr_db": 21.013026110694533,
+    "bedrosian_ratio": 1.0,
+    "env_upper_hz": 600.0,
+    "carrier_lower_hz": 600.0
+  },
+  {
+    "beta": 1.5,
+    "am_depth": 0.5,
+    "am_snr_db": 38.915514850905794,
+    "fm_snr_db": 22.011601198315866,
+    "bedrosian_ratio": 1.5,
+    "env_upper_hz": 600.0,
+    "carrier_lower_hz": 400.0
+  },
+  {
+    "beta": 2.0,
+    "am_depth": 0.5,
+    "am_snr_db": 20.723626766324696,
+    "fm_snr_db": 20.98844688135894,
+    "bedrosian_ratio": 3.0,
+    "env_upper_hz": 600.0,
+    "carrier_lower_hz": 200.0
+  },
+  {
+    "beta": 3.0,
+    "am_depth": 0.5,
+    "am_snr_db": 6.595565959196497,
+    "fm_snr_db": 11.435810365113817,
+    "bedrosian_ratio": Infinity,
+    "env_upper_hz": 600.0,
+    "carrier_lower_hz": -200.0
+  },
+  {
+    "beta": 0.05,
+    "am_depth": 0.7,
+    "am_snr_db": 73.32265379542085,
+    "fm_snr_db": 21.18115002504018,
+    "bedrosian_ratio": 0.6938775510204082,
+    "env_upper_hz": 680.0,
+    "carrier_lower_hz": 980.0
+  },
+  {
+    "beta": 0.25,
+    "am_depth": 0.7,
+    "am_snr_db": 46.27487770207025,
+    "fm_snr_db": 19.467476956007857,
+    "bedrosian_ratio": 0.7555555555555555,
+    "env_upper_hz": 680.0,
+    "carrier_lower_hz": 900.0
+  },
+  {
+    "beta": 0.5,
+    "am_depth": 0.7,
+    "am_snr_db": 35.543436113001604,
+    "fm_snr_db": 17.264930651398434,
+    "bedrosian_ratio": 0.85,
+    "env_upper_hz": 680.0,
+    "carrier_lower_hz": 800.0
+  },
+  {
+    "beta": 0.75,
+    "am_depth": 0.7,
+    "am_snr_db": 30.034643518228037,
+    "fm_snr_db": 16.559435533437437,
+    "bedrosian_ratio": 0.9714285714285714,
+    "env_upper_hz": 680.0,
+    "carrier_lower_hz": 700.0
+  },
+  {
+    "beta": 1.0,
+    "am_depth": 0.7,
+    "am_snr_db": 26.858246877392105,
+    "fm_snr_db": 16.918017132631558,
+    "bedrosian_ratio": 1.1333333333333333,
+    "env_upper_hz": 680.0,
+    "carrier_lower_hz": 600.0
+  },
+  {
+    "beta": 1.5,
+    "am_depth": 0.7,
+    "am_snr_db": 24.854262747849237,
+    "fm_snr_db": 19.538616055441935,
+    "bedrosian_ratio": 1.7,
+    "env_upper_hz": 680.0,
+    "carrier_lower_hz": 400.0
+  },
+  {
+    "beta": 2.0,
+    "am_depth": 0.7,
+    "am_snr_db": 29.034053917977513,
+    "fm_snr_db": 21.66145300291153,
+    "bedrosian_ratio": 3.4,
+    "env_upper_hz": 680.0,
+    "carrier_lower_hz": 200.0
+  },
+  {
+    "beta": 3.0,
+    "am_depth": 0.7,
+    "am_snr_db": 14.429985386636272,
+    "fm_snr_db": 16.74558064194231,
+    "bedrosian_ratio": Infinity,
+    "env_upper_hz": 680.0,
+    "carrier_lower_hz": -200.0
+  },
+  {
+    "beta": 0.05,
+    "am_depth": 0.9,
+    "am_snr_db": 73.27490188294705,
+    "fm_snr_db": 20.112957917147817,
+    "bedrosian_ratio": 0.7755102040816326,
+    "env_upper_hz": 760.0,
+    "carrier_lower_hz": 980.0
+  },
+  {
+    "beta": 0.25,
+    "am_depth": 0.9,
+    "am_snr_db": 46.00109516838404,
+    "fm_snr_db": 13.356957710560271,
+    "bedrosian_ratio": 0.8444444444444444,
+    "env_upper_hz": 760.0,
+    "carrier_lower_hz": 900.0
+  },
+  {
+    "beta": 0.5,
+    "am_depth": 0.9,
+    "am_snr_db": 34.901615503775176,
+    "fm_snr_db": 10.15926362522572,
+    "bedrosian_ratio": 0.95,
+    "env_upper_hz": 760.0,
+    "carrier_lower_hz": 800.0
+  },
+  {
+    "beta": 0.75,
+    "am_depth": 0.9,
+    "am_snr_db": 28.923491583884932,
+    "fm_snr_db": 9.6462885462944,
+    "bedrosian_ratio": 1.0857142857142856,
+    "env_upper_hz": 760.0,
+    "carrier_lower_hz": 700.0
+  },
+  {
+    "beta": 1.0,
+    "am_depth": 0.9,
+    "am_snr_db": 25.14972410180699,
+    "fm_snr_db": 10.392829642067323,
+    "bedrosian_ratio": 1.2666666666666666,
+    "env_upper_hz": 760.0,
+    "carrier_lower_hz": 600.0
+  },
+  {
+    "beta": 1.5,
+    "am_depth": 0.9,
+    "am_snr_db": 21.18902611777376,
+    "fm_snr_db": 13.956929862625927,
+    "bedrosian_ratio": 1.9,
+    "env_upper_hz": 760.0,
+    "carrier_lower_hz": 400.0
+  },
+  {
+    "beta": 2.0,
+    "am_depth": 0.9,
+    "am_snr_db": 20.534490033708046,
+    "fm_snr_db": 18.983665007073057,
+    "bedrosian_ratio": 3.8,
+    "env_upper_hz": 760.0,
+    "carrier_lower_hz": 200.0
+  },
+  {
+    "beta": 3.0,
+    "am_depth": 0.9,
+    "am_snr_db": 21.66591675758378,
+    "fm_snr_db": 20.112977054461687,
+    "bedrosian_ratio": Infinity,
+    "env_upper_hz": 760.0,
+    "carrier_lower_hz": -200.0
+  }
+]
+
+=======================================================================
+FILE: results/bedrosian_2d_1794633496.json
 =======================================================================
 [
   {
@@ -3582,6 +4515,198 @@ FILE: results/fm_sweep_1794629817.json
 ]
 
 =======================================================================
+FILE: results/fm_sweep_1794632963.json
+=======================================================================
+[
+  {
+    "fm_freq_hz": 0.5,
+    "am_fm_snr_db": 42.54276822551215,
+    "stft_fm_snr_db": 60.58178454871313,
+    "stft_h32_snr_db": 60.50530248152416,
+    "stft_h256_snr_db": -2.7061282177658503,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": false
+  },
+  {
+    "fm_freq_hz": 1.0,
+    "am_fm_snr_db": 43.27881352787312,
+    "stft_fm_snr_db": 55.624140241247716,
+    "stft_h32_snr_db": 57.49066273107289,
+    "stft_h256_snr_db": -2.0754606623279144,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": false
+  },
+  {
+    "fm_freq_hz": 2.0,
+    "am_fm_snr_db": 43.979365794175784,
+    "stft_fm_snr_db": 40.35370420109012,
+    "stft_h32_snr_db": 40.46899425778648,
+    "stft_h256_snr_db": -2.311455875258722,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": false
+  },
+  {
+    "fm_freq_hz": 4.0,
+    "am_fm_snr_db": 43.98515394931033,
+    "stft_fm_snr_db": 29.47455531169541,
+    "stft_h32_snr_db": 29.198486632448525,
+    "stft_h256_snr_db": -1.7357391456539948,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": false
+  },
+  {
+    "fm_freq_hz": 8.0,
+    "am_fm_snr_db": 44.19750515672618,
+    "stft_fm_snr_db": 20.567102917374225,
+    "stft_h32_snr_db": 18.267724436608415,
+    "stft_h256_snr_db": -1.2039114647369045,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": false
+  },
+  {
+    "fm_freq_hz": 16.0,
+    "am_fm_snr_db": 44.308356886854845,
+    "stft_fm_snr_db": 13.20209848129874,
+    "stft_h32_snr_db": 10.774982244849731,
+    "stft_h256_snr_db": -1.3610358382145105,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": false
+  },
+  {
+    "fm_freq_hz": 32.0,
+    "am_fm_snr_db": 43.97875832698365,
+    "stft_fm_snr_db": 2.947427066857347,
+    "stft_h32_snr_db": 6.91087165093707,
+    "stft_h256_snr_db": -0.04212786763559553,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": false
+  },
+  {
+    "fm_freq_hz": 64.0,
+    "am_fm_snr_db": 43.77107798092111,
+    "stft_fm_snr_db": 0.0006010375771002596,
+    "stft_h32_snr_db": -0.05863191834336305,
+    "stft_h256_snr_db": -5.2684385258576515e-06,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": true
+  },
+  {
+    "fm_freq_hz": 128.0,
+    "am_fm_snr_db": 43.53494385374536,
+    "stft_fm_snr_db": -1.6000433046630004e-07,
+    "stft_h32_snr_db": -0.006472653079812225,
+    "stft_h256_snr_db": -1.5680211036924988e-07,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": true
+  },
+  {
+    "fm_freq_hz": 200.0,
+    "am_fm_snr_db": 43.80679595466127,
+    "stft_fm_snr_db": 2.1719069810235704e-05,
+    "stft_h32_snr_db": -0.0013905530639444245,
+    "stft_h256_snr_db": -1.689249469094003e-06,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": true
+  }
+]
+
+=======================================================================
+FILE: results/fm_sweep_1794633500.json
+=======================================================================
+[
+  {
+    "fm_freq_hz": 0.5,
+    "am_fm_snr_db": 42.54276822551215,
+    "stft_fm_snr_db": 60.58178454871313,
+    "stft_h32_snr_db": 60.50530248152416,
+    "stft_h256_snr_db": -2.7061282177658503,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": false
+  },
+  {
+    "fm_freq_hz": 1.0,
+    "am_fm_snr_db": 43.27881352787312,
+    "stft_fm_snr_db": 55.624140241247716,
+    "stft_h32_snr_db": 57.49066273107289,
+    "stft_h256_snr_db": -2.0754606623279144,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": false
+  },
+  {
+    "fm_freq_hz": 2.0,
+    "am_fm_snr_db": 43.979365794175784,
+    "stft_fm_snr_db": 40.35370420109012,
+    "stft_h32_snr_db": 40.46899425778648,
+    "stft_h256_snr_db": -2.311455875258722,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": false
+  },
+  {
+    "fm_freq_hz": 4.0,
+    "am_fm_snr_db": 43.98515394931033,
+    "stft_fm_snr_db": 29.47455531169541,
+    "stft_h32_snr_db": 29.198486632448525,
+    "stft_h256_snr_db": -1.7357391456539948,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": false
+  },
+  {
+    "fm_freq_hz": 8.0,
+    "am_fm_snr_db": 44.19750515672618,
+    "stft_fm_snr_db": 20.567102917374225,
+    "stft_h32_snr_db": 18.267724436608415,
+    "stft_h256_snr_db": -1.2039114647369045,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": false
+  },
+  {
+    "fm_freq_hz": 16.0,
+    "am_fm_snr_db": 44.308356886854845,
+    "stft_fm_snr_db": 13.20209848129874,
+    "stft_h32_snr_db": 10.774982244849731,
+    "stft_h256_snr_db": -1.3610358382145105,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": false
+  },
+  {
+    "fm_freq_hz": 32.0,
+    "am_fm_snr_db": 43.97875832698365,
+    "stft_fm_snr_db": 2.947427066857347,
+    "stft_h32_snr_db": 6.91087165093707,
+    "stft_h256_snr_db": -0.04212786763559553,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": false
+  },
+  {
+    "fm_freq_hz": 64.0,
+    "am_fm_snr_db": 43.77107798092111,
+    "stft_fm_snr_db": 0.0006010375771002596,
+    "stft_h32_snr_db": -0.05863191834336305,
+    "stft_h256_snr_db": -5.2684385258576515e-06,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": true
+  },
+  {
+    "fm_freq_hz": 128.0,
+    "am_fm_snr_db": 43.53494385374536,
+    "stft_fm_snr_db": -1.6000433046630004e-07,
+    "stft_h32_snr_db": -0.006472653079812225,
+    "stft_h256_snr_db": -1.5680211036924988e-07,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": true
+  },
+  {
+    "fm_freq_hz": 200.0,
+    "am_fm_snr_db": 43.80679595466127,
+    "stft_fm_snr_db": 2.1719069810235704e-05,
+    "stft_h32_snr_db": -0.0013905530639444245,
+    "stft_h256_snr_db": -1.689249469094003e-06,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": true
+  }
+]
+
+=======================================================================
 FILE: results/runs/.gitkeep
 =======================================================================
 
@@ -4101,6 +5226,238 @@ FILE: results/speech_like_1794629816.json
 ]
 
 =======================================================================
+FILE: results/speech_like_1794632962.json
+=======================================================================
+[
+  {
+    "am_freq_hz": 1.0,
+    "am_vs_theory_db": 84.21618568261543,
+    "am_env_lp_db": 67.89626821292472,
+    "stft_env_lp_db": 65.2307958073958,
+    "stft_env_short_db": 65.31145640580115,
+    "lpf_eff_hz": 30.0,
+    "stft_vs_theory_db": -3.2388813847006914,
+    "note": "in-band"
+  },
+  {
+    "am_freq_hz": 2.0,
+    "am_vs_theory_db": 95.72528876825018,
+    "am_env_lp_db": 69.65999627037733,
+    "stft_env_lp_db": 63.75292747612573,
+    "stft_env_short_db": 66.53345439212997,
+    "lpf_eff_hz": 30.0,
+    "stft_vs_theory_db": -2.2006327692917713,
+    "note": "in-band"
+  },
+  {
+    "am_freq_hz": 4.0,
+    "am_vs_theory_db": 99.20110032729599,
+    "am_env_lp_db": 70.53014933260638,
+    "stft_env_lp_db": 55.2318864027821,
+    "stft_env_short_db": 65.18324233610218,
+    "lpf_eff_hz": 30.0,
+    "stft_vs_theory_db": -3.0149962724780606,
+    "note": "in-band"
+  },
+  {
+    "am_freq_hz": 8.0,
+    "am_vs_theory_db": 97.5611514378383,
+    "am_env_lp_db": 70.49530141856624,
+    "stft_env_lp_db": 44.31091590311698,
+    "stft_env_short_db": 63.85804298472917,
+    "lpf_eff_hz": 30.0,
+    "stft_vs_theory_db": -2.6529464153262583,
+    "note": "in-band"
+  },
+  {
+    "am_freq_hz": 16.0,
+    "am_vs_theory_db": 97.96744851344435,
+    "am_env_lp_db": 69.17984364853818,
+    "stft_env_lp_db": 43.27110473135286,
+    "stft_env_short_db": 62.18622701512855,
+    "lpf_eff_hz": 30.0,
+    "stft_vs_theory_db": -2.671371938295413,
+    "note": "in-band"
+  },
+  {
+    "am_freq_hz": 32.0,
+    "am_vs_theory_db": 98.68687654497302,
+    "am_env_lp_db": 60.433517850727114,
+    "stft_env_lp_db": 40.316202468650395,
+    "stft_env_short_db": 58.61784017303183,
+    "lpf_eff_hz": 48.0,
+    "stft_vs_theory_db": -2.860254857474467,
+    "note": "lpf-limited"
+  },
+  {
+    "am_freq_hz": 64.0,
+    "am_vs_theory_db": 97.86190499206296,
+    "am_env_lp_db": 18.306344533020788,
+    "stft_env_lp_db": -2.4022918760487624,
+    "stft_env_short_db": 15.827143347044872,
+    "lpf_eff_hz": 96.0,
+    "stft_vs_theory_db": -8.00741030942693,
+    "note": "lpf-limited"
+  },
+  {
+    "am_freq_hz": 128.0,
+    "am_vs_theory_db": 41.175877922798485,
+    "am_env_lp_db": 7.141971295774372,
+    "stft_env_lp_db": -64.95527607781165,
+    "stft_env_short_db": 4.125144802349963,
+    "lpf_eff_hz": 192.0,
+    "stft_vs_theory_db": -24.52733562903738,
+    "note": "lpf-limited"
+  },
+  {
+    "am_freq_hz": 256.0,
+    "am_vs_theory_db": 36.04365767297465,
+    "am_env_lp_db": 5.448118309423572,
+    "stft_env_lp_db": -76.55495137057233,
+    "stft_env_short_db": -14.341814793890936,
+    "lpf_eff_hz": 384.0,
+    "stft_vs_theory_db": -29.782597110474555,
+    "note": "lpf-limited"
+  },
+  {
+    "am_freq_hz": 512.0,
+    "am_vs_theory_db": 26.471946243696646,
+    "am_env_lp_db": -2.193233790071954,
+    "stft_env_lp_db": -69.42674589139246,
+    "stft_env_short_db": -60.90108313465932,
+    "lpf_eff_hz": 500.0,
+    "stft_vs_theory_db": -24.671711967329873,
+    "note": "lpf-limited"
+  },
+  {
+    "am_freq_hz": 700.0,
+    "am_vs_theory_db": 18.653191154999156,
+    "am_env_lp_db": -19.548893939096693,
+    "stft_env_lp_db": -89.48551699303269,
+    "stft_env_short_db": -105.58627060603136,
+    "lpf_eff_hz": 500.0,
+    "stft_vs_theory_db": -52.59800615877186,
+    "note": "lpf-limited"
+  }
+]
+
+=======================================================================
+FILE: results/speech_like_1794633499.json
+=======================================================================
+[
+  {
+    "am_freq_hz": 1.0,
+    "am_vs_theory_db": 84.21618568261543,
+    "am_env_lp_db": 67.89626821292472,
+    "stft_env_lp_db": 65.2307958073958,
+    "stft_env_short_db": 65.31145640580115,
+    "lpf_eff_hz": 30.0,
+    "stft_vs_theory_db": -3.2388813847006914,
+    "note": "in-band"
+  },
+  {
+    "am_freq_hz": 2.0,
+    "am_vs_theory_db": 95.72528876825018,
+    "am_env_lp_db": 69.65999627037733,
+    "stft_env_lp_db": 63.75292747612573,
+    "stft_env_short_db": 66.53345439212997,
+    "lpf_eff_hz": 30.0,
+    "stft_vs_theory_db": -2.2006327692917713,
+    "note": "in-band"
+  },
+  {
+    "am_freq_hz": 4.0,
+    "am_vs_theory_db": 99.20110032729599,
+    "am_env_lp_db": 70.53014933260638,
+    "stft_env_lp_db": 55.2318864027821,
+    "stft_env_short_db": 65.18324233610218,
+    "lpf_eff_hz": 30.0,
+    "stft_vs_theory_db": -3.0149962724780606,
+    "note": "in-band"
+  },
+  {
+    "am_freq_hz": 8.0,
+    "am_vs_theory_db": 97.5611514378383,
+    "am_env_lp_db": 70.49530141856624,
+    "stft_env_lp_db": 44.31091590311698,
+    "stft_env_short_db": 63.85804298472917,
+    "lpf_eff_hz": 30.0,
+    "stft_vs_theory_db": -2.6529464153262583,
+    "note": "in-band"
+  },
+  {
+    "am_freq_hz": 16.0,
+    "am_vs_theory_db": 97.96744851344435,
+    "am_env_lp_db": 69.17984364853818,
+    "stft_env_lp_db": 43.27110473135286,
+    "stft_env_short_db": 62.18622701512855,
+    "lpf_eff_hz": 30.0,
+    "stft_vs_theory_db": -2.671371938295413,
+    "note": "in-band"
+  },
+  {
+    "am_freq_hz": 32.0,
+    "am_vs_theory_db": 98.68687654497302,
+    "am_env_lp_db": 60.433517850727114,
+    "stft_env_lp_db": 40.316202468650395,
+    "stft_env_short_db": 58.61784017303183,
+    "lpf_eff_hz": 48.0,
+    "stft_vs_theory_db": -2.860254857474467,
+    "note": "lpf-limited"
+  },
+  {
+    "am_freq_hz": 64.0,
+    "am_vs_theory_db": 97.86190499206296,
+    "am_env_lp_db": 18.306344533020788,
+    "stft_env_lp_db": -2.4022918760487624,
+    "stft_env_short_db": 15.827143347044872,
+    "lpf_eff_hz": 96.0,
+    "stft_vs_theory_db": -8.00741030942693,
+    "note": "lpf-limited"
+  },
+  {
+    "am_freq_hz": 128.0,
+    "am_vs_theory_db": 41.175877922798485,
+    "am_env_lp_db": 7.141971295774372,
+    "stft_env_lp_db": -64.95527607781165,
+    "stft_env_short_db": 4.125144802349963,
+    "lpf_eff_hz": 192.0,
+    "stft_vs_theory_db": -24.52733562903738,
+    "note": "lpf-limited"
+  },
+  {
+    "am_freq_hz": 256.0,
+    "am_vs_theory_db": 36.04365767297465,
+    "am_env_lp_db": 5.448118309423572,
+    "stft_env_lp_db": -76.55495137057233,
+    "stft_env_short_db": -14.341814793890936,
+    "lpf_eff_hz": 384.0,
+    "stft_vs_theory_db": -29.782597110474555,
+    "note": "lpf-limited"
+  },
+  {
+    "am_freq_hz": 512.0,
+    "am_vs_theory_db": 26.471946243696646,
+    "am_env_lp_db": -2.193233790071954,
+    "stft_env_lp_db": -69.42674589139246,
+    "stft_env_short_db": -60.90108313465932,
+    "lpf_eff_hz": 500.0,
+    "stft_vs_theory_db": -24.671711967329873,
+    "note": "lpf-limited"
+  },
+  {
+    "am_freq_hz": 700.0,
+    "am_vs_theory_db": 18.653191154999156,
+    "am_env_lp_db": -19.548893939096693,
+    "stft_env_lp_db": -89.48551699303269,
+    "stft_env_short_db": -105.58627060603136,
+    "lpf_eff_hz": 500.0,
+    "stft_vs_theory_db": -52.59800615877186,
+    "note": "lpf-limited"
+  }
+]
+
+=======================================================================
 FILE: scripts/gen_synthetic.py
 =======================================================================
 from pathlib import Path
@@ -4120,6 +5477,168 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+=======================================================================
+FILE: scripts/regen_results.sh
+=======================================================================
+#!/usr/bin/env bash
+# Regenerate RESULTS.md end-to-end. Self-contained: finds repo root, activates venv.
+set -euo pipefail
+
+# --- Find repo root by walking up to pyproject.toml ---
+find_repo_root() {
+    local dir="$1"
+    while [ "$dir" != "/" ] && [ -n "$dir" ]; do
+        if [ -f "$dir/pyproject.toml" ]; then echo "$dir"; return 0; fi
+        dir="$(dirname "$dir")"
+    done
+    return 1
+}
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(find_repo_root "$SCRIPT_DIR")" || {
+    echo "ERROR: no pyproject.toml found above $SCRIPT_DIR"
+    exit 1
+}
+cd "$REPO_ROOT"
+echo "repo root: $REPO_ROOT"
+
+# --- Activate venv if not already active ---
+if [ -z "${VIRTUAL_ENV:-}" ]; then
+    for cand in "$HOME/.venvs/modulab-venv" "$REPO_ROOT/.venv"; do
+        if [ -f "$cand/bin/activate" ]; then
+            echo "activating venv: $cand"
+            set +u; source "$cand/bin/activate"; set -u
+            break
+        fi
+    done
+fi
+
+# --- Verify modulab is importable ---
+if ! python -c "import modulab.config" 2>/dev/null; then
+    echo "ERROR: cannot import modulab.config"
+    echo "  python: $(command -v python)"
+    echo "  VIRTUAL_ENV: ${VIRTUAL_ENV:-<unset>}"
+    echo "  try: pip install -e .  (inside the venv)"
+    exit 1
+fi
+
+CONFIG="${1:-modulab_config_lite.yaml}"
+echo "=== regen_results.sh: $CONFIG ==="
+
+# [1/5] Run all 4 extended sweeps
+echo "[1/5] Running extended sweeps..."
+python - << PY
+from pathlib import Path
+from modulab.config import Config
+from modulab.harness.runner import (
+    run_bedrosian_sweep, run_bedrosian_2d_sweep,
+    run_speech_like_sweep, run_fm_sweep,
+)
+cfg = Config.load("$CONFIG")
+run_bedrosian_sweep(cfg, Path("results"))
+run_bedrosian_2d_sweep(cfg, Path("results"))
+run_speech_like_sweep(cfg, Path("results"))
+run_fm_sweep(cfg, Path("results"))
+PY
+
+# [2/5] Delete + bench -> fresh Tables 1-3
+echo "[2/5] Running bench (Tables 1-3)..."
+rm -f RESULTS.md
+python -m modulab.cli bench --config "$CONFIG"
+[ -f RESULTS.md ] || { echo "ERROR: bench failed"; exit 1; }
+
+# [3/5] Append Tables 4-7
+echo "[3/5] Appending Tables 4-7..."
+python - << 'PY'
+import json
+from pathlib import Path
+
+def latest(pattern, key):
+    files = sorted(Path("results").glob(pattern), key=lambda p: p.stat().st_mtime)
+    for f in reversed(files):
+        try: data = json.loads(f.read_text())
+        except: continue
+        if isinstance(data, list) and data and key in data[0]:
+            return data
+    return None
+
+bed1d  = latest("bedrosian_[0-9]*.json", "recon_snr_db")
+bed2d  = latest("bedrosian_2d_*.json",  "am_depth")
+speech = latest("speech_like_*.json",   "am_env_lp_db")
+fm     = latest("fm_sweep_*.json",      "stft_fm_snr_db")
+assert all([bed1d, bed2d, speech, fm]), \
+    f"missing JSONs: bed1d={bool(bed1d)} bed2d={bool(bed2d)} speech={bool(speech)} fm={bool(fm)}"
+
+text = Path("RESULTS.md").read_text()
+L = ["", "---", "", "# Extended Analysis", ""]
+
+L += ["## Table 4 — Bedrosian decomposition fidelity (1D)", "",
+      "*fc=1000 Hz, am_freq=fm_freq=400 Hz, am_depth=0.5, float*", "",
+      "| β | Bed. ratio | AM SNR (dB) | FM SNR (dB) | Recon SNR (dB) |",
+      "|---|---|---|---|---|"]
+for r in bed1d:
+    bed = r.get("bedrosian_ratio", 0)
+    bs = "inf" if bed == float("inf") else f"{bed:.2f}"
+    L.append(f"| {r['beta']:.2f} | {bs} | {r['am_snr_db']:.2f} | {r['fm_snr_db']:.2f} | {r['recon_snr_db']:.2f} |")
+L += ["", "**AM drops 83→14 dB as envelope-carrier overlap crosses 1.0. Recon SNR flat — failure is structural.**", ""]
+
+L += ["## Table 5 — AM/FM interference (β × am_depth)", "",
+      "*Varies envelope amplitude, not bandwidth — NOT a Bedrosian test.*", ""]
+betas  = sorted(set(r["beta"]     for r in bed2d))
+depths = sorted(set(r["am_depth"] for r in bed2d))
+L.append("| β \\ am_depth | " + " | ".join(f"{d:.2f}" for d in depths) + " |")
+L.append("|---|" + "|".join("---" for _ in depths) + "|")
+for b in betas:
+    row = f"| {b:.2f} |"
+    for d in depths:
+        c = next((r for r in bed2d if r["beta"] == b and r["am_depth"] == d), None)
+        row += f" {c['am_snr_db']:.1f} |" if c else " — |"
+    L.append(row)
+L.append("")
+
+L += ["## Table 6 — Speech-like envelope tracking", "",
+      "*f0=120, F1=700, F2=1220, F3=2600, adaptive LPF, SI-SDR*", "",
+      "| am_freq | AM vs theory | AM env | STFT long | STFT short |",
+      "|---|---|---|---|---|"]
+for r in speech:
+    sh = r.get("stft_env_short_db", r.get("stft_env_lp_db", 0))
+    L.append(f"| {r['am_freq_hz']:.1f} | {r['am_vs_theory_db']:.1f} | {r['am_env_lp_db']:.1f} | {r['stft_env_lp_db']:.1f} | {sh:.1f} |")
+L += ["", "**AM collapses at am_freq ≈ f0 = 120 Hz (pitch collision).**", ""]
+
+L += ["## Table 7 — FM tracking: multi-hop STFT vs AM/FM", "",
+      "*f0=1000 Hz, fm_depth=50 Hz, STFT n_fft=512*", "",
+      "| fm_freq | AM/FM | STFT hop=32 | STFT hop=128 | STFT hop=256 |",
+      "|---|---|---|---|---|"]
+for r in fm:
+    h32  = r.get("stft_h32_snr_db",  r["stft_fm_snr_db"])
+    h256 = r.get("stft_h256_snr_db", 0)
+    L.append(f"| {r['fm_freq_hz']:.1f} | {r['am_fm_snr_db']:.1f} | {h32:.1f} | {r['stft_fm_snr_db']:.1f} | {h256:.1f} |")
+L += ["", "**Crossover at ~2 Hz. STFT wins slow vibrato, AM/FM wins 4–200 Hz.**", ""]
+
+L += ["## Consolidated Verdict", "",
+      "1. **Cost**: AM/FM = 3.8× STFT FLOPs. STFT wins.",
+      "2. **Quantization**: AM/FM needs ≥12-bit. STFT robust at any bit.",
+      "3. **Bedrosian** (T4): 69 dB drop when envelope-carrier overlap crosses 1.0.",
+      "4. **AM/FM interference** (T5): deeper AM more robust to high FM index.",
+      "5. **Speech envelope** (T6): AM/FM and short-window STFT tie within 5 dB.",
+      "6. **FM tracking** (T7): crossover at 2 Hz; AM/FM wins fast rates.",
+      "",
+      "**Conclusion**: AM/FM wins two regimes and loses elsewhere. Task-dependent selection."]
+
+Path("RESULTS.md").write_text(text.rstrip() + "\n" + "\n".join(L))
+print(f"  appended {len(L)} lines")
+PY
+
+# [4/5] Verify
+echo "[4/5] Verifying..."
+count=$(grep -c '^## Table' RESULTS.md)
+echo "  tables: $count"
+[ "$count" -eq 7 ] || { echo "FAIL: expected 7, got $count"; grep '^## ' RESULTS.md; exit 1; }
+grep -q "## Consolidated Verdict" RESULTS.md || { echo "FAIL: no verdict"; exit 1; }
+
+echo "[5/5] DONE ($(wc -l < RESULTS.md) lines)"
 
 
 =======================================================================

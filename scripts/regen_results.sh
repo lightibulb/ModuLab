@@ -154,4 +154,9 @@ echo "  tables: $count"
 [ "$count" -eq 7 ] || { echo "FAIL: expected 7, got $count"; grep '^## ' RESULTS.md; exit 1; }
 grep -q "## Consolidated Verdict" RESULTS.md || { echo "FAIL: no verdict"; exit 1; }
 
+# Optional: real speech (skip if data/speech/test.wav missing)
+if [ -f data/speech/test.wav ]; then
+  echo "  real speech file found — could add extra tests here (not yet implemented)"
+fi
+
 echo "[5/5] DONE ($(wc -l < RESULTS.md) lines)"

@@ -1,0 +1,92 @@
+[
+  {
+    "fm_freq_hz": 0.5,
+    "am_fm_snr_db": 42.54276822551215,
+    "stft_fm_snr_db": -0.3703519167354283,
+    "stft_h32_snr_db": -1.14548146499843,
+    "stft_h256_snr_db": 2.1800658594310005,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": false
+  },
+  {
+    "fm_freq_hz": 1.0,
+    "am_fm_snr_db": 43.27881352787312,
+    "stft_fm_snr_db": -0.4684482636209799,
+    "stft_h32_snr_db": -2.03607683001539,
+    "stft_h256_snr_db": 4.234169450091445,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": false
+  },
+  {
+    "fm_freq_hz": 2.0,
+    "am_fm_snr_db": 43.979365794175784,
+    "stft_fm_snr_db": 0.13366537284930885,
+    "stft_h32_snr_db": -2.5379970596965755,
+    "stft_h256_snr_db": 5.55994777350617,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": false
+  },
+  {
+    "fm_freq_hz": 4.0,
+    "am_fm_snr_db": 43.98515394931033,
+    "stft_fm_snr_db": 0.9173790601229738,
+    "stft_h32_snr_db": -3.967275058381529,
+    "stft_h256_snr_db": 6.236076422401249,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": false
+  },
+  {
+    "fm_freq_hz": 8.0,
+    "am_fm_snr_db": 44.19750515672618,
+    "stft_fm_snr_db": 3.1489435926063782,
+    "stft_h32_snr_db": -5.662717536938495,
+    "stft_h256_snr_db": 5.1236110994547275,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": false
+  },
+  {
+    "fm_freq_hz": 16.0,
+    "am_fm_snr_db": 44.308356886854845,
+    "stft_fm_snr_db": 2.768461132852888,
+    "stft_h32_snr_db": -6.026284194457915,
+    "stft_h256_snr_db": 4.381491560607372,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": false
+  },
+  {
+    "fm_freq_hz": 32.0,
+    "am_fm_snr_db": 43.97875832698365,
+    "stft_fm_snr_db": -0.2793684877034055,
+    "stft_h32_snr_db": -9.187950679967589,
+    "stft_h256_snr_db": 1.1765227654727315,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": false
+  },
+  {
+    "fm_freq_hz": 64.0,
+    "am_fm_snr_db": 43.77107798092111,
+    "stft_fm_snr_db": 0.002506412967149079,
+    "stft_h32_snr_db": -0.05867039385392705,
+    "stft_h256_snr_db": -5.425996109762743e-06,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": true
+  },
+  {
+    "fm_freq_hz": 128.0,
+    "am_fm_snr_db": 43.53494385374536,
+    "stft_fm_snr_db": -1.394283688817689e-07,
+    "stft_h32_snr_db": -0.006475581618823265,
+    "stft_h256_snr_db": -1.1563358154490622e-07,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": true
+  },
+  {
+    "fm_freq_hz": 200.0,
+    "am_fm_snr_db": 43.80679595466127,
+    "stft_fm_snr_db": 2.1628816851558728e-05,
+    "stft_h32_snr_db": -0.0013918345737606687,
+    "stft_h256_snr_db": -1.6948934560955822e-06,
+    "stft_nyq_hz": 62.5,
+    "above_stft_nyq": true
+  }
+]

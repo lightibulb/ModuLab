@@ -3,6 +3,7 @@ import numpy as np
 from scipy.signal import butter, sosfiltfilt, hilbert
 
 from .base import Representation, Encoding
+from modulab.metrics.spectral import filterbank_coverage_snr
 
 
 def erb_edges(num_bands, f_min, f_max):
@@ -28,6 +29,26 @@ class FilterbankAMFM(Representation):
         self.order = order
         self.spacing = spacing
 
+    def _band_sos_list(self, fs):
+        edges, _ = erb_edges(self.num_bands, self.f_min, self.f_max)
+        nyq = fs / 2.0
+        out = []
+        for k in range(self.num_bands):
+            lo = edges[k] / nyq
+            hi = min(edges[k + 1] / nyq, 0.999)
+            if hi <= lo:
+                out.append(None)
+                continue
+            out.append(butter(self.order, [lo, hi], btype="band", output="sos"))
+        return out
+
+    def coverage_snr(self, x, fs):
+        """Diagnostic: how well does the filterbank reconstruct x without AM/FM?
+        A perfect-reconstruction bank gives high SNR; a bank with spectral gaps
+        gives lower SNR, exposing the ceiling of this representation."""
+        sos_list = [s for s in self._band_sos_list(fs) if s is not None]
+        return filterbank_coverage_snr(sos_list, x, fs)
+
     def encode(self, x, fs):
         edges, centers = erb_edges(self.num_bands, self.f_min, self.f_max)
         nyq = fs / 2.0
@@ -35,7 +56,6 @@ class FilterbankAMFM(Representation):
         am = np.zeros((self.num_bands, n), dtype=np.float32)
         fm = np.zeros((self.num_bands, n), dtype=np.float32)
         phase0 = np.zeros(self.num_bands, dtype=np.float32)
-
         for k in range(self.num_bands):
             lo = edges[k] / nyq
             hi = min(edges[k + 1] / nyq, 0.999)
@@ -48,14 +68,11 @@ class FilterbankAMFM(Representation):
             phase = np.unwrap(np.angle(analytic))
             carrier = 2 * np.pi * centers[k] * np.arange(n) / fs
             residual = phase - carrier
-            # CRITICAL: preserve initial phase per band before zeroing.
             phase0[k] = float(residual[0])
             residual = residual - residual[0]
-            # First-difference with leading zero -> cumsum exactly inverts.
             fm_k = np.zeros(n, dtype=np.float32)
             fm_k[1:] = (np.diff(residual) * fs / (2 * np.pi)).astype(np.float32)
             fm[k] = fm_k
-
         return Encoding(
             data={"am": am, "fm": fm, "phase0": phase0,
                   "centers": centers, "edges": edges},
@@ -79,6 +96,9 @@ class FilterbankAMFM(Representation):
         return y.astype(np.float32)
 
     def quantize(self, enc, bits):
+        """Quantize AM and FM independently. Called at ALL bit widths —
+        including 16. Fixes the previous 'if bits < 16' skip that made the
+        16-bit row report float precision rather than 16-bit quantization."""
         am = enc.data["am"].copy()
         fm = enc.data["fm"].copy()
         am_max = float(am.max()) + 1e-12

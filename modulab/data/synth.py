@@ -33,12 +33,18 @@ def am_fm_tone(fs, duration_s, fc, am_freq=5.0, am_depth=0.5,
     return (env * np.cos(phase)).astype(np.float32)
 
 
-def generate_synthetic_corpus(fs, duration_s):
+def generate_synthetic_corpus(fs, duration_s, seed=42):
+    """Synthetic corpus. `seed` offsets the internal RNG seeds so multi-seed
+    benchmark runs get genuinely different signals."""
+    base = int(seed) * 1000
     return {
-        "vowel_a": formant_vowel(fs, duration_s, f0=120, formants=(730, 1090, 2440), seed=1),
-        "vowel_i": formant_vowel(fs, duration_s, f0=140, formants=(270, 2290, 3010), seed=2),
-        "vowel_u": formant_vowel(fs, duration_s, f0=100, formants=(300, 870, 2240), seed=3),
-        "am_tone_1k": am_fm_tone(fs, duration_s, fc=1000, am_freq=5, am_depth=0.5, fm_freq=10, fm_depth=10),
-        "fm_tone_1k": am_fm_tone(fs, duration_s, fc=1000, am_freq=0.5, am_depth=0.1, fm_freq=20, fm_depth=50),
-        "amfm_tone_2k": am_fm_tone(fs, duration_s, fc=2000, am_freq=4, am_depth=0.6, fm_freq=8, fm_depth=30),
+        "vowel_a": formant_vowel(fs, duration_s, f0=120, formants=(730, 1090, 2440), seed=base + 1),
+        "vowel_i": formant_vowel(fs, duration_s, f0=140, formants=(270, 2290, 3010), seed=base + 2),
+        "vowel_u": formant_vowel(fs, duration_s, f0=100, formants=(300, 870, 2240), seed=base + 3),
+        "am_tone_1k": am_fm_tone(fs, duration_s, fc=1000, am_freq=5, am_depth=0.5,
+                                 fm_freq=10, fm_depth=10, seed=base + 4),
+        "fm_tone_1k": am_fm_tone(fs, duration_s, fc=1000, am_freq=0.5, am_depth=0.1,
+                                 fm_freq=20, fm_depth=50, seed=base + 5),
+        "amfm_tone_2k": am_fm_tone(fs, duration_s, fc=2000, am_freq=4, am_depth=0.6,
+                                   fm_freq=8, fm_depth=30, seed=base + 6),
     }

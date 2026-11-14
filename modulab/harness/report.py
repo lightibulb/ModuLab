@@ -2,12 +2,32 @@ from __future__ import annotations
 from pathlib import Path
 from collections import defaultdict
 import numpy as np
+import scipy.stats as st
 
 
-def _fmt(v, nd=2):
-    if isinstance(v, float):
-        return "n/a" if np.isnan(v) else f"{v:.{nd}f}"
-    return str(v)
+def _ci95(vals):
+    arr = np.array([v for v in vals if v is not None and not np.isnan(v)])
+    if len(arr) == 0:
+        return (float("nan"), float("nan"))
+    if len(arr) == 1:
+        return (float(arr[0]), 0.0)
+    m = float(arr.mean())
+    h = float(st.sem(arr) * st.t.ppf(0.975, len(arr) - 1))
+    return (m, h)
+
+
+def _fmt_ci(mean, ci):
+    if np.isnan(mean):
+        return "n/a"
+    if ci <= 0:
+        return f"{mean:.1f}"
+    return f"{mean:.1f}±{ci:.2f}"
+
+
+def _fmt_kbps(bps):
+    if bps is None or (isinstance(bps, float) and np.isnan(bps)):
+        return "n/a"
+    return f"{bps / 1000.0:.0f}"
 
 
 def generate_report(results, sweep, out_dir, config_path):
@@ -17,30 +37,41 @@ def generate_report(results, sweep, out_dir, config_path):
     L.append(f"**Config hash**: `{results['config_hash']}`  ")
     L.append(f"**Sample rate**: {results['fs']} Hz  ")
     L.append(f"**Duration**: {results['duration_s']} s  ")
+    L.append(f"**Seeds**: {results.get('seeds', [42])}  ")
     L.append(f"**Total runs**: {len(results['runs'])}")
     L.append("")
 
-    L.append("## Table 1 - Quality at passthrough")
+    # ---- Table 1: quality with CI + bitrate ----
+    L.append("## Table 1 — Quality at passthrough (mean ± 95% CI)")
     L.append("")
-    L.append("| Representation | Bits | SNR (dB) | SI-SDR (dB) | MCD (dB) |")
-    L.append("|---|---|---|---|---|")
+    L.append("| Repr | Bits | Bitrate (kbps) | SNR (dB) | SI-SDR (dB) | MCD (dB) |")
+    L.append("|---|---|---|---|---|---|")
     agg = defaultdict(lambda: defaultdict(list))
     for r in results["runs"]:
         if "error" in r or r.get("op") != "passthrough":
             continue
         key = (r["repr"], r["bits"])
-        for m, v in r["metrics"].items():
-            agg[key][m].append(v)
+        agg[key]["snr_db"].append(r["metrics"].get("snr_db", float("nan")))
+        agg[key]["si_sdr_db"].append(r["metrics"].get("si_sdr_db", float("nan")))
+        agg[key]["mcd_db"].append(r["metrics"].get("mcd_db", float("nan")))
+        agg[key]["bitrate_bps"].append(r.get("bitrate_bps", float("nan")))
     for (rn, b) in sorted(agg.keys()):
-        m = {k: float(np.nanmean(v)) for k, v in agg[(rn, b)].items()}
-        L.append(f"| {rn} | {b} | {_fmt(m.get('snr_db'))} | "
-                 f"{_fmt(m.get('si_sdr_db'))} | {_fmt(m.get('mcd_db'))} |")
+        snr_m, snr_ci = _ci95(agg[(rn, b)]["snr_db"])
+        si_m, si_ci = _ci95(agg[(rn, b)]["si_sdr_db"])
+        mc_m, mc_ci = _ci95(agg[(rn, b)]["mcd_db"])
+        br_m, _ = _ci95(agg[(rn, b)]["bitrate_bps"])
+        L.append(f"| {rn} | {b} | {_fmt_kbps(br_m)} | {_fmt_ci(snr_m, snr_ci)} | "
+                 f"{_fmt_ci(si_m, si_ci)} | {_fmt_ci(mc_m, mc_ci)} |")
+    L.append("")
+    L.append("**Equal-bitrate comparison**: at ~256 kbps, compare SNR across representations. "
+             "Use the (Repr, Bits) row whose bitrate is closest to the target.")
     L.append("")
 
-    L.append("## Table 2 - Computational cost")
+    # ---- Table 2: cost + bitrate ----
+    L.append("## Table 2 — Cost (FLOPs, wall-time, bitrate at 8-bit)")
     L.append("")
-    L.append("| Representation | FLOPs encode | FLOPs decode | Wall ms enc | Wall ms dec |")
-    L.append("|---|---|---|---|---|")
+    L.append("| Repr | FLOPs enc | FLOPs dec | Wall ms enc | Wall ms dec | Bitrate @8b |")
+    L.append("|---|---|---|---|---|---|")
     agg2 = defaultdict(lambda: defaultdict(list))
     for r in results["runs"]:
         if "error" in r:
@@ -49,77 +80,56 @@ def generate_report(results, sweep, out_dir, config_path):
         agg2[r["repr"]]["flops_decode"].append(r["flops_decode"])
         agg2[r["repr"]]["wall_ms_encode"].append(r["wall_ms_encode"])
         agg2[r["repr"]]["wall_ms_decode"].append(r["wall_ms_decode"])
+        if r["bits"] == 8:
+            agg2[r["repr"]]["bitrate_bps_8"].append(r.get("bitrate_bps", float("nan")))
     for rn in sorted(agg2.keys()):
-        m = {k: float(np.mean(v)) for k, v in agg2[rn].items()}
-        L.append(f"| {rn} | {m['flops_encode']:.2e} | {m['flops_decode']:.2e} | "
-                 f"{_fmt(m['wall_ms_encode'])} | {_fmt(m['wall_ms_decode'])} |")
+        m = {k: float(np.mean(v)) for k, v in agg2[rn].items() if v}
+        br8 = float(np.nanmean(agg2[rn]["bitrate_bps_8"])) if agg2[rn].get("bitrate_bps_8") else float("nan")
+        L.append(f"| {rn} | {m.get('flops_encode', 0):.2e} | {m.get('flops_decode', 0):.2e} | "
+                 f"{m.get('wall_ms_encode', 0):.1f} | {m.get('wall_ms_decode', 0):.1f} | "
+                 f"{_fmt_kbps(br8)} |")
     L.append("")
 
+    # ---- Table 3: narrowband sweep (bitrate at 12 bits) ----
     if sweep and "sweep" in sweep:
-        bits_label = (sweep["sweep"][0].get("bits", 8) if sweep and sweep.get("sweep") else 8)
-        L.append(f"## Table 3 - Narrowband sweep ({bits_label}-bit, single band)")
+        bits_label = sweep["sweep"][0].get("bits", 8) if sweep["sweep"] else 8
+        L.append(f"## Table 3 — Filter bandwidth sweep ({bits_label}-bit, β=1.0)")
         L.append("")
-        L.append("| fc (Hz) | BW/fc | BW (Hz) | SNR (dB) |")
-        L.append("|---|---|---|---|")
+        L.append("*Varies filter BW at fixed modulation index. Non-monotonic pattern "
+                 "reflects filter truncation, NOT Bedrosian validity — see Tables 4-6.*")
+        L.append("")
+        L.append("| fc (Hz) | BW/fc | env_upper (Hz) | car_lower (Hz) | Bed. ratio | SNR (dB) |")
+        L.append("|---|---|---|---|---|---|")
         for row in sweep["sweep"]:
+            eu = row.get("env_upper_hz", float("nan"))
+            cl = row.get("car_lower_hz", float("nan"))
+            bd = row.get("bedrosian_ratio", float("nan"))
+            bd_s = "inf" if bd == float("inf") else f"{bd:.2f}"
             L.append(f"| {row['fc_hz']:.0f} | {row['bw_ratio']:.2f} | "
-                     f"{row['bw_hz']:.0f} | {row['snr_db']:.2f} |")
+                     f"{eu:.0f} | {cl:.0f} | {bd_s} | {row['snr_db']:.2f} |")
         L.append("")
-        try:
-            import matplotlib
-            matplotlib.use("Agg")
-            import matplotlib.pyplot as plt
-            fig, ax = plt.subplots(figsize=(8, 5))
-            for fc in sorted(set(r["fc_hz"] for r in sweep["sweep"])):
-                pts = sorted([r for r in sweep["sweep"] if r["fc_hz"] == fc],
-                             key=lambda z: z["bw_ratio"])
-                ax.plot([p["bw_ratio"] for p in pts], [p["snr_db"] for p in pts],
-                        marker="o", label=f"fc={fc:.0f} Hz")
-            ax.axvline(0.25, linestyle="--", color="gray", alpha=0.6,
-                       label="Narrowband limit (BW/fc=0.25)")
-            ax.set_xlabel("BW / fc")
-            ax.set_ylabel("Reconstruction SNR (dB)")
-            ax.set_title("AM/FM Reconstruction Quality vs Narrowband Ratio")
-            ax.grid(True, alpha=0.3)
-            ax.legend()
-            out_dir.mkdir(parents=True, exist_ok=True)
-            fig_path = out_dir / "narrowband_sweep.png"
-            fig.savefig(fig_path, dpi=120, bbox_inches="tight")
-            plt.close(fig)
-            L.append(f"![Narrowband sweep]({fig_path.name})")
-            L.append("")
-        except Exception as e:
-            L.append(f"(Plot failed: {e})")
-            L.append("")
 
+    # ---- Verdict ----
     L.append("## Verdict")
     L.append("")
     try:
-        if ("filterbank_amfm", 8) in agg and ("stft", 8) in agg:
-            a_snr = float(np.nanmean(agg[("filterbank_amfm", 8)]["snr_db"]))
-            s_snr = float(np.nanmean(agg[("stft", 8)]["snr_db"]))
-            a_f = float(np.mean(agg2["filterbank_amfm"]["flops_encode"]))
-            s_f = float(np.mean(agg2["stft"]["flops_encode"]))
-            L.append(f"At 8-bit, AM/FM SNR {a_snr:.1f} dB vs STFT {s_snr:.1f} dB; "
-                     f"AM/FM encode {a_f:.2e} FLOPs vs STFT {s_f:.2e} FLOPs.")
+        for b in [8, 12, 16]:
+            if ("filterbank_amfm", b) in agg and ("stft", b) in agg:
+                a_snr, _ = _ci95(agg[("filterbank_amfm", b)]["snr_db"])
+                s_snr, _ = _ci95(agg[("stft", b)]["snr_db"])
+                a_br, _ = _ci95(agg[("filterbank_amfm", b)]["bitrate_bps"])
+                s_br, _ = _ci95(agg[("stft", b)]["bitrate_bps"])
+                L.append(f"- **At {b}-bit**: AM/FM SNR {a_snr:.1f} dB "
+                         f"@ {_fmt_kbps(a_br)} kbps vs STFT {s_snr:.1f} dB "
+                         f"@ {_fmt_kbps(s_br)} kbps.")
         if "parallel" in agg2:
-            par_f = float(np.mean(agg2["parallel"]["flops_encode"]))
-            L.append(f"Parallel encode costs {par_f:.2e} FLOPs "
-                     f"(sum of branches, no discount).")
-        if sweep and "sweep" in sweep:
-            nb = [r for r in sweep["sweep"] if r["bw_ratio"] <= 0.25]
-            wb = [r for r in sweep["sweep"] if r["bw_ratio"] >= 0.5]
-            if nb and wb:
-                L.append(f"Narrowband (BW/fc<=0.25) SNR {np.mean([r['snr_db'] for r in nb]):.1f} dB "
-                         f"vs wideband (BW/fc>=0.5) {np.mean([r['snr_db'] for r in wb]):.1f} dB.")
+            p_flops = float(np.mean(agg2["parallel"]["flops_encode"]))
+            L.append(f"- Parallel encode: {p_flops:.2e} FLOPs (sum of branches, no discount).")
     except Exception as e:
-        L.append(f"(Verdict failed: {e})")
+        L.append(f"(Verdict generation failed: {e})")
     L.append("")
 
     text = "\n".join(L)
-
-    # PRESERVE extended section (Tables 4-7, Consolidated Verdict)
-    # if it exists — prevents bench from wiping append-added tables.
     target = Path("RESULTS.md")
     preserved = ""
     if target.exists():
@@ -130,6 +140,5 @@ def generate_report(results, sweep, out_dir, config_path):
             if pos >= 0:
                 preserved = existing[pos:]
                 break
-
     target.write_text(text + preserved)
     return text + preserved
