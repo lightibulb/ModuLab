@@ -536,11 +536,12 @@ def run_speech_like_sweep(cfg: Config, out_dir: Path):
         # LPF'd true syllabic envelope (fair comparison at speech rates)
         env_true_lp = _lpf(env_true, fs, lpf_hz)
 
-        # Metrics
-        am_vs_theory = _pow_snr(am_theory_raw[edge:n - edge], am_hil[edge:n - edge])
-        am_env_lp = _pow_snr(env_true_lp[edge:n - edge], am_hil_lp[edge:n - edge])
-        stft_env_lp_snr = _pow_snr(env_true_lp[edge:n - edge], stft_env_lp[edge:n - edge])
-        stft_env_raw = _pow_snr(am_theory_raw[edge:n - edge], stft_env[edge:n - edge])
+        # Metrics: use SI-SDR (scale-invariant) to normalize the carrier
+        # envelope mean that scaled |hilbert(x)| and STFT frame RMS
+        am_vs_theory = _si_sdr(am_theory_raw[edge:n - edge], am_hil[edge:n - edge])
+        am_env_lp = _si_sdr(env_true_lp[edge:n - edge], am_hil_lp[edge:n - edge])
+        stft_env_lp_snr = _si_sdr(env_true_lp[edge:n - edge], stft_env_lp[edge:n - edge])
+        stft_env_raw = _si_sdr(am_theory_raw[edge:n - edge], stft_env[edge:n - edge])
 
         rows.append({
             "am_freq_hz": float(am_freq),
@@ -548,7 +549,9 @@ def run_speech_like_sweep(cfg: Config, out_dir: Path):
             "am_env_lp_db": float(am_env_lp),
             "stft_env_lp_db": float(stft_env_lp_snr),
             "stft_vs_theory_db": float(stft_env_raw),
-            "note": "above-LPF" if am_freq > lpf_hz else "",
+            "note": (
+                "lpf-limited" if am_freq > lpf_hz else "in-band"
+            ),
         })
 
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -557,21 +560,37 @@ def run_speech_like_sweep(cfg: Config, out_dir: Path):
     print(f"  Wrote {out_file}")
 
     print()
-    print(f"  {'am_freq':>8}  {'AM_vsThy':>9}  {'AM_env_lp':>10}  "
-          f"{'STFT_env_lp':>11}  {'STFT_vsThy':>10}")
-    print(f"  {'-'*8}  {'-'*9}  {'-'*10}  {'-'*11}  {'-'*10}")
+    print(f"  {'am_freq':>8}  {'AM_Thy':>8}  {'AM_env':>8}  "
+          f"{'STFT_env':>8}  {'regime':>11}")
+    print(f"  {'-'*8}  {'-'*8}  {'-'*8}  {'-'*8}  {'-'*11}")
     for r in rows:
-        print(f"  {r['am_freq_hz']:>8.1f}  {r['am_vs_theory_db']:>8.1f}dB  "
-              f"{r['am_env_lp_db']:>9.1f}dB  {r['stft_env_lp_db']:>10.1f}dB  "
-              f"{r['stft_vs_theory_db']:>9.1f}dB")
+        print(f"  {r['am_freq_hz']:>8.1f}  {r['am_vs_theory_db']:>7.1f}dB  "
+              f"{r['am_env_lp_db']:>7.1f}dB  {r['stft_env_lp_db']:>7.1f}dB  "
+              f"{r['note']:>11}")
 
     # Speech-rate comparison
     speech = [r for r in rows if r["am_freq_hz"] <= lpf_hz]
     if speech:
+        am_mean = np.mean([r['am_env_lp_db'] for r in speech])
+        stft_mean = np.mean([r['stft_env_lp_db'] for r in speech])
         print()
-        print(f"  Speech-rate (am_freq <= {lpf_hz} Hz) mean:")
-        print(f"    AM_env_lp:   {np.mean([r['am_env_lp_db'] for r in speech]):+6.1f} dB")
-        print(f"    STFT_env_lp: {np.mean([r['stft_env_lp_db'] for r in speech]):+6.1f} dB")
+        print(f"  Speech-rate (am_freq <= {lpf_hz} Hz) mean, SI-SDR:")
+        print(f"    AM_env:   {am_mean:+6.1f} dB")
+        print(f"    STFT_env: {stft_mean:+6.1f} dB")
+        if am_mean > stft_mean + 2:
+            print(f"    → AM/FM envelope wins by {am_mean - stft_mean:.1f} dB")
+        elif stft_mean > am_mean + 2:
+            print(f"    → STFT envelope wins by {stft_mean - am_mean:.1f} dB")
+        else:
+            print(f"    → Tie (within 2 dB)")
+
+    # Note the lpf-limited regime
+    above_lpf = [r for r in rows if r["am_freq_hz"] > lpf_hz]
+    if above_lpf:
+        print()
+        print(f"  Above LPF cutoff ({lpf_hz:.0f} Hz): "
+              f"{len(above_lpf)} points filtered out by design")
+        print("  (raises LPF cutoff in config to test higher rates)")
 
     # PNG if available
     try:
@@ -614,6 +633,17 @@ def _lpf(sig, fs, cutoff_hz=30.0, order=4):
         return sig
     sos = butter(order, cutoff_hz / nyq, btype="low", output="sos")
     return sosfiltfilt(sos, sig)
+
+
+def _si_sdr(ref, est):
+    """Scale-invariant SDR in dB (like the standard metric)."""
+    ref = ref - np.mean(ref)
+    est = est - np.mean(est)
+    alpha = np.dot(est, ref) / (np.dot(ref, ref) + 1e-20)
+    target = alpha * ref
+    noise = est - target
+    return 10 * np.log10((np.sum(target ** 2) + 1e-20) /
+                         (np.sum(noise ** 2) + 1e-20))
 
 
 def _stft_envelope(x, fs, n_fft=512, hop=128):
