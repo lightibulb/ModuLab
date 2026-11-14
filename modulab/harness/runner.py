@@ -522,25 +522,34 @@ def run_speech_like_sweep(cfg: Config, out_dir: Path):
             fs, duration, float(am_freq), am_depth, f0, formants, seed=42
         )
 
+        # ADAPTIVE LPF: at least am_freq * 1.5, but no more than 500 Hz.
+        # This allows high-rate modulations to be tracked.
+        lpf_eff = min(max(lpf_hz, am_freq * 1.5), 500.0)
+
         # AM/FM: LPF(|hilbert(x)|)
         am_hil = np.abs(hilbert(x))
-        am_hil_lp = _lpf(am_hil, fs, lpf_hz)
+        am_hil_lp = _lpf(am_hil, fs, lpf_eff)
 
-        # STFT: LPF(frame RMS interp)
+        # STFT (long window): 32 ms window -> ~16 Hz envelope bandwidth
         stft_env = _stft_envelope(x, fs, stft_nfft, stft_hop)
-        stft_env_lp = _lpf(stft_env, fs, lpf_hz)
+        stft_env_lp = _lpf(stft_env, fs, lpf_eff)
+
+        # STFT (short window): 8 ms window -> ~62 Hz envelope bandwidth
+        stft_env_short = _stft_envelope_short(x, fs)
+        stft_env_short_lp = _lpf(stft_env_short, fs, lpf_eff)
 
         # Theoretical envelope (raw composite)
         am_theory_raw = env_true * carrier_env
 
         # LPF'd true syllabic envelope (fair comparison at speech rates)
-        env_true_lp = _lpf(env_true, fs, lpf_hz)
+        env_true_lp = _lpf(env_true, fs, lpf_eff)
 
         # Metrics: use SI-SDR (scale-invariant) to normalize the carrier
         # envelope mean that scaled |hilbert(x)| and STFT frame RMS
         am_vs_theory = _si_sdr(am_theory_raw[edge:n - edge], am_hil[edge:n - edge])
         am_env_lp = _si_sdr(env_true_lp[edge:n - edge], am_hil_lp[edge:n - edge])
         stft_env_lp_snr = _si_sdr(env_true_lp[edge:n - edge], stft_env_lp[edge:n - edge])
+        stft_env_short_snr = _si_sdr(env_true_lp[edge:n - edge], stft_env_short_lp[edge:n - edge])
         stft_env_raw = _si_sdr(am_theory_raw[edge:n - edge], stft_env[edge:n - edge])
 
         rows.append({
@@ -548,6 +557,8 @@ def run_speech_like_sweep(cfg: Config, out_dir: Path):
             "am_vs_theory_db": float(am_vs_theory),
             "am_env_lp_db": float(am_env_lp),
             "stft_env_lp_db": float(stft_env_lp_snr),
+            "stft_env_short_db": float(stft_env_short_snr),
+            "lpf_eff_hz": float(lpf_eff),
             "stft_vs_theory_db": float(stft_env_raw),
             "note": (
                 "lpf-limited" if am_freq > lpf_hz else "in-band"
@@ -560,29 +571,32 @@ def run_speech_like_sweep(cfg: Config, out_dir: Path):
     print(f"  Wrote {out_file}")
 
     print()
-    print(f"  {'am_freq':>8}  {'AM_Thy':>8}  {'AM_env':>8}  "
-          f"{'STFT_env':>8}  {'regime':>11}")
-    print(f"  {'-'*8}  {'-'*8}  {'-'*8}  {'-'*8}  {'-'*11}")
+    print(f"  {'am_freq':>8}  {'LPF':>5}  {'AM_Thy':>7}  {'AM_env':>7}  "
+          f"{'STFT_lng':>8}  {'STFT_sht':>8}")
+    print(f"  {'-'*8}  {'-'*5}  {'-'*7}  {'-'*7}  {'-'*8}  {'-'*8}")
     for r in rows:
-        print(f"  {r['am_freq_hz']:>8.1f}  {r['am_vs_theory_db']:>7.1f}dB  "
-              f"{r['am_env_lp_db']:>7.1f}dB  {r['stft_env_lp_db']:>7.1f}dB  "
-              f"{r['note']:>11}")
+        print(f"  {r['am_freq_hz']:>8.1f}  {r['lpf_eff_hz']:>5.0f}  "
+              f"{r['am_vs_theory_db']:>6.1f}dB  {r['am_env_lp_db']:>6.1f}dB  "
+              f"{r['stft_env_lp_db']:>7.1f}dB  {r['stft_env_short_db']:>7.1f}dB")
 
     # Speech-rate comparison
-    speech = [r for r in rows if r["am_freq_hz"] <= lpf_hz]
+    speech = [r for r in rows if r["am_freq_hz"] <= 16]
     if speech:
         am_mean = np.mean([r['am_env_lp_db'] for r in speech])
         stft_mean = np.mean([r['stft_env_lp_db'] for r in speech])
+        stft_short = np.mean([r['stft_env_short_db'] for r in speech])
         print()
-        print(f"  Speech-rate (am_freq <= {lpf_hz} Hz) mean, SI-SDR:")
-        print(f"    AM_env:   {am_mean:+6.1f} dB")
-        print(f"    STFT_env: {stft_mean:+6.1f} dB")
-        if am_mean > stft_mean + 2:
-            print(f"    → AM/FM envelope wins by {am_mean - stft_mean:.1f} dB")
-        elif stft_mean > am_mean + 2:
-            print(f"    → STFT envelope wins by {stft_mean - am_mean:.1f} dB")
+        print(f"  Speech-rate (am_freq <= 16 Hz) mean, SI-SDR:")
+        print(f"    AM_env:        {am_mean:+6.1f} dB")
+        print(f"    STFT (long):   {stft_mean:+6.1f} dB")
+        print(f"    STFT (short):  {stft_short:+6.1f} dB")
+        best_stft = max(stft_mean, stft_short)
+        if am_mean > best_stft + 2:
+            print(f"    → AM/FM beats best STFT by {am_mean - best_stft:.1f} dB")
+        elif best_stft > am_mean + 2:
+            print(f"    → STFT beats AM/FM by {best_stft - am_mean:.1f} dB")
         else:
-            print(f"    → Tie (within 2 dB)")
+            print(f"    → Tie (within 2 dB) — envelope estimation is representation-agnostic")
 
     # Note the lpf-limited regime
     above_lpf = [r for r in rows if r["am_freq_hz"] > lpf_hz]
@@ -660,6 +674,20 @@ def _stft_envelope(x, fs, n_fft=512, hop=128):
     return env
 
 
+def _stft_envelope_short(x, fs, n_fft=128, hop=32):
+    """Short-window STFT frame RMS: 8 ms window -> ~62 Hz envelope bandwidth.
+    Fair comparison against AM/FM with LPF up to 60 Hz."""
+    from scipy.signal import stft as sp_stft
+    noverlap = n_fft - hop
+    _, _, Z = sp_stft(x, fs=fs, nperseg=n_fft, noverlap=noverlap,
+                      boundary="zeros", padded=True)
+    frame_rms = np.sqrt(np.sum(np.abs(Z) ** 2, axis=0))
+    frame_times = np.arange(len(frame_rms)) * hop / fs
+    audio_times = np.arange(len(x)) / fs
+    return np.interp(audio_times, frame_times, frame_rms,
+                     left=float(frame_rms[0]), right=float(frame_rms[-1]))
+
+
 def _stft_fm(x, fs, carrier_hz, n_fft=512, hop=128):
     """Extract FM from STFT phase at peak bin near carrier_hz."""
     from scipy.signal import stft as sp_stft
@@ -720,8 +748,10 @@ def run_fm_sweep(cfg: Config, out_dir: Path):
         ph_hil = np.unwrap(np.angle(a))
         fm_hil = np.gradient(ph_hil) * fs / (2 * np.pi) - f0
 
-        # STFT extraction
+        # STFT extraction at multiple hops
         fm_stft = _stft_fm(x, fs, f0, stft_nfft, stft_hop) - f0
+        fm_stft_h32 = _stft_fm(x, fs, f0, stft_nfft, 32) - f0
+        fm_stft_h256 = _stft_fm(x, fs, f0, stft_nfft, 256) - f0
 
         # Theoretical FM (deviation from f0)
         fm_true = fm_depth * np.cos(2 * np.pi * fm_freq * t)
@@ -729,6 +759,8 @@ def run_fm_sweep(cfg: Config, out_dir: Path):
         # Metrics
         am_fm_snr = _pow_snr(fm_true[edge:n - edge], fm_hil[edge:n - edge])
         stft_fm_snr = _pow_snr(fm_true[edge:n - edge], fm_stft[edge:n - edge])
+        stft_h32_snr = _pow_snr(fm_true[edge:n - edge], fm_stft_h32[edge:n - edge])
+        stft_h256_snr = _pow_snr(fm_true[edge:n - edge], fm_stft_h256[edge:n - edge])
 
         # STFT frame rate limit
         stft_frame_rate = fs / stft_hop
@@ -738,6 +770,8 @@ def run_fm_sweep(cfg: Config, out_dir: Path):
             "fm_freq_hz": float(fm_freq),
             "am_fm_snr_db": float(am_fm_snr),
             "stft_fm_snr_db": float(stft_fm_snr),
+            "stft_h32_snr_db": float(stft_h32_snr),
+            "stft_h256_snr_db": float(stft_h256_snr),
             "stft_nyq_hz": float(stft_nyq),
             "above_stft_nyq": bool(fm_freq > stft_nyq),
         })
@@ -748,13 +782,14 @@ def run_fm_sweep(cfg: Config, out_dir: Path):
     print(f"  Wrote {out_file}")
 
     print()
-    print(f"  {'fm_freq':>8}  {'AM_FM_SNR':>10}  {'STFT_SNR':>10}  {'STFT_nyq':>9}")
-    print(f"  {'-'*8}  {'-'*10}  {'-'*10}  {'-'*9}")
+    print(f"  {'fm_freq':>8}  {'AM_FM':>7}  {'STFT_h32':>9}  {'STFT_h128':>10}  "
+          f"{'STFT_h256':>10}")
+    print(f"  {'-'*8}  {'-'*7}  {'-'*9}  {'-'*10}  {'-'*10}")
     for r in rows:
-        note = "  ← >Nyq" if r["above_stft_nyq"] else ""
-        print(f"  {r['fm_freq_hz']:>8.1f}  {r['am_fm_snr_db']:>9.1f}dB  "
+        print(f"  {r['fm_freq_hz']:>8.1f}  {r['am_fm_snr_db']:>6.1f}dB  "
+              f"{r['stft_h32_snr_db']:>8.1f}dB  "
               f"{r['stft_fm_snr_db']:>9.1f}dB  "
-              f"{r['stft_nyq_hz']:>8.1f}Hz{note}")
+              f"{r['stft_h256_snr_db']:>9.1f}dB")
 
     # Summary
     low = [r for r in rows if r["fm_freq_hz"] <= 16]
